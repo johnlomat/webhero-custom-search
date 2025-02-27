@@ -16,24 +16,10 @@ A WordPress code snippet that implements an enhanced custom search functionality
 ## Usage
 
 1. Add the code to your theme's `functions.php` file or include it as a separate file
-2. Configure the ACF fields to search through by modifying the `$acf_fields` array in the `get_product_results()` function. By default, it searches these fields:
-   - model_name
-   - diameter_and_material
-   - reference
-   - model_case
-   - water-resistance
-   - bezel
-   - dial
-   - bracelet
-   - movement
-   - calibre
-   - power_reserve
-   - certification
-   - feature_1_title
-   - feature_2_title
-   - feature_3_title
-   - family_name
-   - family_intro
+2. Configure the ACF fields to search through by modifying the `$acf_fields` array in the `get_product_results()` function as shown below:
+
+![ACF Fields Configuration](images/code.png)
+
 3. Use the shortcode `[custom_search]` to display the search form
 4. Use the shortcode `[custom_search_results]` to display search results
 
