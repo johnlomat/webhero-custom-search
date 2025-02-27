@@ -18,7 +18,7 @@ A WordPress code snippet that implements an enhanced custom search functionality
 1. Add the code to your theme's `functions.php` file or include it as a separate file
 2. Configure the ACF fields to search through by modifying the `$acf_fields` array in the `get_product_results()` function as shown below:
 
-![ACF Fields Configuration](images/code.png)
+<img src="images/code.png" alt="ACF Fields Configuration" width="300"/>
 
 3. Use the shortcode `[custom_search]` to display the search form
 4. Use the shortcode `[custom_search_results]` to display search results
