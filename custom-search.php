@@ -93,6 +93,52 @@ function custom_search_results() {
         return ob_get_clean();
     }
     
+    // Special handling for 'rolex' search
+    if ( strtolower( $search_query ) === 'rolex' ) {
+        // Get the page with 'rolex' slug
+        $rolex_page = get_posts(array(
+            'name' => 'rolex',
+            'post_type' => 'page',
+            'posts_per_page' => 1
+        ));
+        
+        if ( !empty($rolex_page) ) {
+            $rolex_page = $rolex_page[0];
+            ?>
+            <div class="custom-search-results">
+                <h1 class="search-title">
+                    <?php
+                    printf(
+                        esc_html__( 'Search Results for: %s', 'webhero' ),
+                        '<span>' . esc_html( $search_query ) . '</span>'
+                    );
+                    ?>
+                </h1>
+                
+                <div class="post-results">
+                    <div class="articles-grid">
+                        <article id="post-<?php echo $rolex_page->ID; ?>" <?php post_class('', $rolex_page->ID); ?>>
+                            <?php if ( has_post_thumbnail( $rolex_page->ID ) ) : ?>
+                                <div class="post-thumbnail">
+                                    <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>">
+                                        <?php echo get_the_post_thumbnail( $rolex_page->ID, 'medium', array( 'class' => 'featured-image' ) ); ?>
+                                    </a>
+                                </div>
+                            <?php endif; ?>
+                            <footer class="entry-footer">
+                                <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
+                                    <?php esc_html_e( 'Read More', 'webhero' ); ?>
+                                </a>
+                            </footer>
+                        </article>
+                    </div>
+                </div>
+            </div>
+            <?php
+            return ob_get_clean();
+        }
+    }
+    
     $paged_products = isset( $_GET['paged_products'] ) ? absint( $_GET['paged_products'] ) : 1;
     $paged_posts    = isset( $_GET['paged_posts'] ) ? absint( $_GET['paged_posts'] ) : 1;
     ?>
@@ -521,22 +567,64 @@ function get_post_pagination( $search_query, $paged ) {
 function custom_search_ajax() {
     check_ajax_referer( 'custom_search_nonce', 'security' );
     
-    // Replace old user_ip logic with get_client_ip()
-    $user_ip = get_client_ip();
-    $transient_key = 'custom_search_rate_' . md5( $user_ip );
-    $rate_data     = get_transient( $transient_key );
-    if ( ! $rate_data ) {
-        $rate_data = array( 'count' => 0 );
-    }
-    if ( $rate_data['count'] >= 5 ) {
-        wp_send_json_error( array( 'message' => esc_html__( 'Search limit exceeded. Please wait a minute before trying again.', 'webhero' ) ) );
-    }
-    $rate_data['count']++;
-    set_transient( $transient_key, $rate_data, 60 );
-    
     $search_query   = isset( $_POST['search_query'] ) ? sanitize_text_field( wp_unslash( $_POST['search_query'] ) ) : '';
     $paged_products = isset( $_POST['paged_products'] ) ? absint( $_POST['paged_products'] ) : 1;
     $paged_posts    = isset( $_POST['paged_posts'] ) ? absint( $_POST['paged_posts'] ) : 1;
+    
+    // Only apply rate limiting for new searches (when both page numbers are 1)
+    // This allows pagination to work without hitting the rate limit
+    if ($paged_products === 1 && $paged_posts === 1 && !empty($search_query)) {
+        // Replace old user_ip logic with get_client_ip()
+        $user_ip = get_client_ip();
+        $transient_key = 'custom_search_rate_' . md5( $user_ip );
+        $rate_data     = get_transient( $transient_key );
+        if ( ! $rate_data ) {
+            $rate_data = array( 'count' => 0 );
+        }
+        if ( $rate_data['count'] >= 5 ) {
+            wp_send_json_error( array( 'message' => esc_html__( 'Search limit exceeded. Please wait a minute before trying again.', 'webhero' ) ) );
+        }
+        $rate_data['count']++;
+        set_transient( $transient_key, $rate_data, 60 );
+    }
+    
+    // Special handling for 'rolex' search
+    if ( strtolower( $search_query ) === 'rolex' ) {
+        // Get the page with 'rolex' slug
+        $rolex_page = get_page_by_path( 'rolex' );
+        
+        if ( $rolex_page ) {
+            ob_start();
+            ?>
+            <div class="post-results">
+                <div class="articles-grid">
+                    <article id="post-<?php echo $rolex_page->ID; ?>" <?php post_class('', $rolex_page->ID); ?>>
+                        <?php if ( has_post_thumbnail( $rolex_page->ID ) ) : ?>
+                            <div class="post-thumbnail">
+                                <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>">
+                                    <?php echo get_the_post_thumbnail( $rolex_page->ID, 'medium', array( 'class' => 'featured-image' ) ); ?>
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                        <footer class="entry-footer">
+                            <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
+                                <?php esc_html_e( 'Read More', 'webhero' ); ?>
+                            </a>
+                        </footer>
+                    </article>
+                </div>
+            </div>
+            <?php
+            $rolex_html = ob_get_clean();
+            
+            wp_send_json_success( array(
+                'special_rolex_result' => true,
+                'rolex_html'           => $rolex_html,
+                'has_results'          => true
+            ) );
+            return;
+        }
+    }
     
     $product_results = get_product_results( $search_query, $paged_products );
     $post_results    = get_post_results( $search_query, $paged_posts );
@@ -597,9 +685,12 @@ function enqueue_custom_search_inline_scripts() {
             \$input.val('').trigger('input').focus();
         });
 
-        function performSearch(query, pagedProducts, pagedPosts, updateProducts, updatePosts) {
+        function performSearch(query, pagedProducts, pagedPosts, updateProducts, updatePosts, isNewSearch) {
             searchResults.addClass('loading');
             searchButton.prop('disabled', true).addClass('loading');
+            
+            // Default to true if not specified (backwards compatibility)
+            isNewSearch = (typeof isNewSearch !== 'undefined') ? isNewSearch : false;
             
             $.ajax({
                 url: '" . admin_url( 'admin-ajax.php' ) . "',
@@ -618,22 +709,81 @@ function enqueue_custom_search_inline_scripts() {
                         searchButton.prop('disabled', false).removeClass('loading');
                         return;
                     }
-                    if (updateProducts) {
+                    
+                    // Only reset everything for a brand new search, not for pagination
+                    if (isNewSearch) {
+                        productResults.hide();
+                        postResults.hide();
+                    }
+                    
+                    // Handle special Rolex result
+                    if (response.data.special_rolex_result) {
+                        // Set post results with special Rolex content
+                        postResults.html(response.data.rolex_html);
+                        postResults.show();
+                        
+                        // Update search title
+                        searchTitle.text('Search Results for: ' + query);
+                        
+                        searchResults.removeClass('loading');
+                        searchButton.prop('disabled', false).removeClass('loading');
+                        
+                        // Update URL
+                        var newUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+                        if (query) newUrl += '?q=' + encodeURIComponent(query);
+                        window.history.pushState({path: newUrl}, '', newUrl);
+                        return;
+                    }
+                    
+                    // Normal search results handling for non-Rolex searches
+                    if (updateProducts && response.data.product_content) {
                         if (response.data.product_content.has_results) {
-                            productResults.show();
                             productResults.find('.products-container').html(response.data.product_content.html);
                             productResults.find('.product-pagination').html(response.data.product_pagination);
-                        } else {
-                            productResults.hide();
+                            productResults.show();
                         }
                     }
+                    
                     if (updatePosts) {
+                        // First, ensure the post results section has the correct structure
+                        if (postResults.find('.articles-container').length === 0) {
+                            // Create a new div for post results section
+                            postResults.empty();
+                            
+                            // Add section title
+                            var titleElement = document.createElement('h2');
+                            titleElement.className = 'section-title';
+                            titleElement.textContent = 'Articles';
+                            postResults.append(titleElement);
+                            
+                            // Add description
+                            var descElement = document.createElement('p');
+                            descElement.className = 'search-description';
+                            descElement.textContent = 'Explore articles related to your search';
+                            postResults.append(descElement);
+                            
+                            // Add loading indicator
+                            var loadingElement = document.createElement('div');
+                            loadingElement.className = 'loading-indicator';
+                            loadingElement.style.display = 'none';
+                            loadingElement.textContent = 'Loading...';
+                            postResults.append(loadingElement);
+                            
+                            // Add articles container
+                            var articlesContainer = document.createElement('div');
+                            articlesContainer.className = 'articles-container';
+                            postResults.append(articlesContainer);
+                            
+                            // Add pagination container
+                            var paginationElement = document.createElement('div');
+                            paginationElement.className = 'post-pagination';
+                            postResults.append(paginationElement);
+                        }
+                        
                         if (response.data.post_content.has_results) {
-                            postResults.show();
                             postResults.find('.articles-container').html(response.data.post_content.html);
                             postResults.find('.post-pagination').html(response.data.post_pagination);
-                        } else {
-                            postResults.hide();
+                            postResults.show();
                         }
                     }
                     if (query && query.trim() !== '') {
@@ -664,7 +814,8 @@ function enqueue_custom_search_inline_scripts() {
         searchForm.on('submit', function(e) {
             e.preventDefault();
             var query = $(this).find('input[name=\"q\"]').val();
-            performSearch(query, 1, 1, true, true);
+            // This is a new search, so we'll pass true for isNewSearch
+            performSearch(query, 1, 1, true, true, true);
         });
 
         $(document).on('click', '.product-pagination a, .post-pagination a', function(e) {
@@ -676,7 +827,8 @@ function enqueue_custom_search_inline_scripts() {
             var pagedProducts = isProduct ? getPageNumber(link) : (productResults.find('.product-pagination .active').text() || 1);
             var pagedPosts = !isProduct ? getPageNumber(link) : (postResults.find('.post-pagination .active').text() || 1);
             
-            performSearch(query, pagedProducts, pagedPosts, isProduct, !isProduct);
+            // This is pagination, not a new search, so pass false for isNewSearch
+            performSearch(query, pagedProducts, pagedPosts, isProduct, !isProduct, false);
         });
     });
     ";
