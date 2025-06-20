@@ -51,18 +51,30 @@ function get_client_ip() {
  */
 function custom_search_form() {
     ob_start();
+	$current_url = $_SERVER['REQUEST_URI'];
+	$is_ms = strpos($current_url, 'ms/') !== false;
     ?>
     <form role="search" method="get" class="custom-search-form" aria-label="Site Search" action="<?php echo esc_url( home_url( '/search/' ) ); ?>">
         <div class="search-input-wrapper">
             <input type="text"
                    name="q"
                    aria-label="Search input"
-                   placeholder="<?php esc_attr_e( 'Search...', 'webhero' ); ?>"
+                   placeholder="<?php if ($is_ms) {
+							echo esc_attr_e( 'Cari...', 'webhero' );
+						} else {
+							echo esc_attr_e( 'Search...', 'webhero' );
+						}
+								?>"
                    value="<?php echo isset( $_GET['q'] ) ? esc_attr( $_GET['q'] ) : ''; ?>">
             <span class="clear-search" role="button" tabindex="0" aria-label="Clear search">&times;</span>
         </div>
         <button type="submit">
-            <span class="search-text"><?php esc_html_e( 'Search', 'webhero' ); ?></span>
+            <span class="search-text"><?php if ($is_ms) {
+									echo esc_html_e( 'Cari', 'webhero' ); 
+								}else{
+									echo esc_html_e( 'Search', 'webhero' ); 
+								}
+				?></span>
             <span class="spinner"></span>
         </button>
     </form>
@@ -104,15 +116,24 @@ function custom_search_results() {
         
         if ( !empty($rolex_page) ) {
             $rolex_page = $rolex_page[0];
+			$current_url = $_SERVER['REQUEST_URI'];
+			$is_ms = strpos($current_url, 'ms/') !== false;
             ?>
             <div class="custom-search-results">
                 <h1 class="search-title">
                     <?php
-                    printf(
-                        esc_html__( 'Search Results for: %s', 'webhero' ),
-                        '<span>' . esc_html( $search_query ) . '</span>'
-                    );
-                    ?>
+					if ($is_ms) {
+					printf(
+						esc_html__( 'Hasil Carian untuk: %s', 'webhero' ),
+						'<span>' . esc_html( $search_query ) . '</span>'
+					);
+					} else {
+					printf(
+						esc_html__( 'Search Results for: %s', 'webhero' ),
+						'<span>' . esc_html( $search_query ) . '</span>'
+					);
+					}
+					?>
                 </h1>
                 
                 <div class="post-results">
@@ -127,7 +148,12 @@ function custom_search_results() {
                             <?php endif; ?>
                             <footer class="entry-footer">
                                 <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
-                                    <?php esc_html_e( 'Read More', 'webhero' ); ?>
+                                    <?php if ($is_ms) {
+										echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
+									} else {
+										echo esc_html_e( 'Read More', 'webhero' ); 
+									}
+									?>
                                 </a>
                             </footer>
                         </article>
@@ -141,27 +167,57 @@ function custom_search_results() {
     
     $paged_products = isset( $_GET['paged_products'] ) ? absint( $_GET['paged_products'] ) : 1;
     $paged_posts    = isset( $_GET['paged_posts'] ) ? absint( $_GET['paged_posts'] ) : 1;
+	$current_url = $_SERVER['REQUEST_URI'];
+	$is_ms = strpos($current_url, 'ms/') !== false;
     ?>
     <div class="custom-search-results">
         <?php if ( ! empty( $search_query ) ) : ?>
             <h1 class="search-title">
                 <?php
+				if ($is_ms) {
                 printf(
+                    esc_html__( 'Hasil Carian untuk: %s', 'webhero' ),
+                    '<span>' . esc_html( $search_query ) . '</span>'
+                );
+				} else {
+				printf(
                     esc_html__( 'Search Results for: %s', 'webhero' ),
                     '<span>' . esc_html( $search_query ) . '</span>'
                 );
+				}
                 ?>
             </h1>
         <?php else : ?>
-            <h1 class="search-title"><?php esc_html_e( 'All Watches and Articles', 'webhero' ); ?></h1>
+            <h1 class="search-title">
+				<?php if ($is_ms) {
+					echo esc_html_e( 'Semua Jam Tangan dan Artikel', 'webhero' );
+				} else {
+					echo esc_html_e( 'All Watches and Articles', 'webhero' );
+				}
+				?>
+			</h1>
         <?php endif; ?>
 
         <?php 
+		$current_url = $_SERVER['REQUEST_URI'];
+		$is_ms = strpos($current_url, 'ms/') !== false;
         $product_results = get_product_results( $search_query, $paged_products );
         if ( $product_results['has_results'] ) : ?>
             <div class="product-results">
-                <h2 class="section-title"><?php esc_html_e( 'Watches', 'webhero' ); ?></h2>
-                <p class="search-description"><?php esc_html_e( 'Browse Rolex watches based on your search', 'webhero' ); ?></p>
+                <h2 class="section-title">
+					<?php if ($is_ms) {
+						echo esc_html_e( 'Jam Tangan', 'webhero' );
+					} else {
+						echo esc_html_e( 'Watches', 'webhero' );
+					} ?>
+				</h2>
+                <p class="search-description">
+					<?php if($is_ms) {
+						echo esc_html_e( 'Semak imbas jam tangan Rolex berdasarkan carian anda', 'webhero' );
+					} else {
+						echo esc_html_e( 'Browse Rolex watches based on your search', 'webhero' );
+					} ?>
+				</p>
                 <div class="loading-indicator" style="display: none;"><?php esc_html_e( 'Loading...', 'webhero' ); ?></div>
                 <div class="products-container">
                     <?php echo wp_kses_post( $product_results['html'] ); ?>
@@ -173,11 +229,23 @@ function custom_search_results() {
         <?php endif; ?>
 
         <?php 
+		$current_url = $_SERVER['REQUEST_URI'];
+		$is_ms = strpos($current_url, 'ms/') !== false;
         $post_results = get_post_results( $search_query, $paged_posts );
         if ( $post_results['has_results'] ) : ?>
             <div class="post-results">
-                <h2 class="section-title"><?php esc_html_e( 'Articles', 'webhero' ); ?></h2>
-                <p class="search-description"><?php esc_html_e( 'Explore articles related to your search', 'webhero' ); ?></p>
+                <h2 class="section-title"><?php if ($is_ms) {
+							echo esc_html_e( 'Artikel', 'webhero' ); 
+						} else {
+							echo esc_html_e( 'Article', 'webhero' ); 
+						}
+						?></h2>
+                <p class="search-description"><?php if ($is_ms) {
+							echo esc_html_e( 'Terokai artikel yang berkaitan dengan carian anda', 'webhero' ); 
+						} else {
+							echo esc_html_e( 'Explore articles related to your search', 'webhero' ); 
+						}
+						?></p>
                 <div class="loading-indicator" style="display: none;"><?php esc_html_e( 'Loading...', 'webhero' ); ?></div>
                 <div class="articles-container">
                     <?php echo wp_kses_post( $post_results['html'] ); ?>
@@ -347,13 +415,14 @@ function get_product_results( $search_query, $paged ) {
             'has_results' => false,
         );
     }
-    
+    $current_lang = apply_filters( 'wpml_current_language', null );
     $query_args = array(
         'post_type'      => 'product',
         'posts_per_page' => $posts_per_page,
         'paged'          => $paged,
         'post__in'       => $product_ids,
         'orderby'        => 'post__in',
+		'lang'           => $current_lang,
     );
     
     $product_query = new WP_Query( $query_args );
@@ -451,11 +520,13 @@ function get_post_results( $search_query, $paged ) {
          AND post_status = 'publish'
          AND (" . $where_clause . ")"
     );
-    
+    $current_lang = apply_filters( 'wpml_current_language', null );
+
     $post_args = array(
         'post_type'      => 'post',
         'posts_per_page' => $posts_per_page,
         'paged'          => $paged,
+		'lang'           => $current_lang,
     );
     
     if ( ! empty( $post_ids ) ) {
@@ -474,7 +545,8 @@ function get_post_results( $search_query, $paged ) {
     }
     
     $post_query = new WP_Query( $post_args );
-    
+    $current_url = $_SERVER['REQUEST_URI'];
+	$is_ms = strpos($current_url, 'ms/') !== false;
     ob_start();
     if ( $post_query->have_posts() ) :
         echo '<div class="articles-grid">';
@@ -496,7 +568,12 @@ function get_post_results( $search_query, $paged ) {
                 </header>
                 <footer class="entry-footer">
                     <a href="<?php the_permalink(); ?>" class="read-more">
-                        <?php esc_html_e( 'Read More', 'webhero' ); ?>
+						<?php if ($is_ms) {
+							echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
+						} else {
+							echo esc_html_e( 'Read More', 'webhero' ); 
+						}
+						?>
                     </a>
                 </footer>
             </article>
@@ -592,7 +669,8 @@ function custom_search_ajax() {
     if ( strtolower( $search_query ) === 'rolex' ) {
         // Get the page with 'rolex' slug
         $rolex_page = get_page_by_path( 'rolex' );
-        
+        $current_url = $_SERVER['REQUEST_URI'];
+		$is_ms = strpos($current_url, 'ms/') !== false;
         if ( $rolex_page ) {
             ob_start();
             ?>
@@ -608,7 +686,12 @@ function custom_search_ajax() {
                         <?php endif; ?>
                         <footer class="entry-footer">
                             <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
-                                <?php esc_html_e( 'Read More', 'webhero' ); ?>
+                                <?php if ($is_ms) {
+									echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
+								} else {
+									echo esc_html_e( 'Read More', 'webhero' ); 
+								}
+								?>
                             </a>
                         </footer>
                     </article>
@@ -703,6 +786,7 @@ function enqueue_custom_search_inline_scripts() {
                     security: '" . $ajax_nonce . "'
                 },
                 success: function(response) {
+					const currentUrl = window.location.href;
                     if (!response.success) {
                         alert(response.data.message);
                         searchResults.removeClass('loading');
@@ -723,7 +807,11 @@ function enqueue_custom_search_inline_scripts() {
                         postResults.show();
                         
                         // Update search title
-                        searchTitle.text('Search Results for: ' + query);
+                        if (currentUrl.includes('ms/')) {
+							searchTitle.text('Hasil Carian untuk: ' + query);
+						} else {
+							searchTitle.text('Search Results for: ' + query);
+						}
                         
                         searchResults.removeClass('loading');
                         searchButton.prop('disabled', false).removeClass('loading');
@@ -787,9 +875,17 @@ function enqueue_custom_search_inline_scripts() {
                         }
                     }
                     if (query && query.trim() !== '') {
-                        searchTitle.text('Search Results for: ' + query);
+						if (currentUrl.includes('ms/')) {
+							searchTitle.text('Hasil Carian untuk: ' + query);
+						} else {
+							searchTitle.text('Search Results for: ' + query);
+						}
                     } else {
-                        searchTitle.text('All Watches and Articles');
+						if (currentUrl.includes('ms/')) {
+							searchTitle.text('Semua Jam Tangan dan Artikel');
+						} else {
+							searchTitle.text('All Watches and Articles');
+						}
                     }
                     searchResults.removeClass('loading');
                     searchButton.prop('disabled', false).removeClass('loading');
