@@ -893,9 +893,9 @@ function get_collection_results( $search_query ) {
             <footer class="entry-footer">
                 <a href="<?php echo esc_url($category_link); ?>" class="read-more">
                     <?php if ($is_ms) {
-                        echo esc_html_e('Maklumat lanjut', 'webhero');
+                        echo esc_html_e('Ketahui lagi', 'webhero');
                     } else {
-                        echo esc_html_e('Read More', 'webhero');
+                        echo esc_html_e('Discover more', 'webhero');
                     }
                     ?>
                 </a>
