@@ -3,7 +3,7 @@
  * Custom Search Implementation
  *
  * @package WebHero
- * @since 1.2
+ * @since 1.3
  */
 
 // Exit if accessed directly.
@@ -199,8 +199,32 @@ function custom_search_results() {
         <?php endif; ?>
 
         <?php 
-		$current_url = $_SERVER['REQUEST_URI'];
-		$is_ms = strpos($current_url, 'ms/') !== false;
+        // Get collection (product categories) results
+        $collection_results = get_collection_results( $search_query );
+        if ( $collection_results['has_results'] ) : ?>
+            <div class="collection-results">
+                <h2 class="section-title">
+                    <?php if ($is_ms) {
+                        echo esc_html_e( 'Koleksi', 'webhero' );
+                    } else {
+                        echo esc_html_e( 'Collections', 'webhero' );
+                    } ?>
+                </h2>
+                <p class="search-description">
+                    <?php if($is_ms) {
+                        echo esc_html_e( 'Terokai koleksi kami berdasarkan carian anda', 'webhero' );
+                    } else {
+                        echo esc_html_e( 'Explore our collections based on your search', 'webhero' );
+                    } ?>
+                </p>
+                <div class="loading-indicator" style="display: none;"><?php esc_html_e( 'Loading...', 'webhero' ); ?></div>
+                <div class="collection-container">
+                    <?php echo wp_kses_post( $collection_results['html'] ); ?>
+                </div>
+            </div>
+        <?php endif; ?>
+        
+        <?php 
         $product_results = get_product_results( $search_query, $paged_products );
         if ( $product_results['has_results'] ) : ?>
             <div class="product-results">
@@ -237,7 +261,7 @@ function custom_search_results() {
                 <h2 class="section-title"><?php if ($is_ms) {
 							echo esc_html_e( 'Artikel', 'webhero' ); 
 						} else {
-							echo esc_html_e( 'Article', 'webhero' ); 
+							echo esc_html_e( 'Articles', 'webhero' ); 
 						}
 						?></h2>
                 <p class="search-description"><?php if ($is_ms) {
@@ -256,7 +280,7 @@ function custom_search_results() {
             </div>
         <?php endif; ?>
 
-        <?php if ( ! $product_results['has_results'] && ! $post_results['has_results'] && ! empty( $search_query ) ) : ?>
+        <?php if ( ! $collection_results['has_results'] && ! $product_results['has_results'] && ! $post_results['has_results'] && ! empty( $search_query ) ) : ?>
             <div class="no-results-message">
                 <h2>Your search didn’t return any results.</h2>
                 <p>We invite you to explore these exceptional collections:</p>
@@ -512,14 +536,20 @@ function get_post_results( $search_query, $paged ) {
         $like_term = '%' . $wpdb->esc_like( $term ) . '%';
         $conditions[] = $wpdb->prepare( "(post_title LIKE %s OR post_content LIKE %s)", $like_term, $like_term );
     }
-    $where_clause = implode( ' OR ', $conditions );
     
-    $post_ids = $wpdb->get_col(
-        "SELECT ID FROM {$wpdb->posts}
-         WHERE post_type = 'post'
-         AND post_status = 'publish'
-         AND (" . $where_clause . ")"
-    );
+    $post_ids = array();
+    
+    // Only execute the query if we have conditions
+    if ( ! empty( $conditions ) ) {
+        $where_clause = implode( ' OR ', $conditions );
+        
+        $post_ids = $wpdb->get_col(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_type = 'post'
+             AND post_status = 'publish'
+             AND (" . $where_clause . ")"
+        );
+    }
     $current_lang = apply_filters( 'wpml_current_language', null );
 
     $post_args = array(
@@ -532,8 +562,8 @@ function get_post_results( $search_query, $paged ) {
     if ( ! empty( $post_ids ) ) {
         $post_args['post__in'] = $post_ids;
         $post_args['orderby']  = 'post__in';
-    } else {
-        // fallback meta query remains as-is
+    } else if ( ! empty( $search_variations ) ) {
+        // Only add meta_query if we have search terms
         $meta_query = array( 'relation' => 'OR' );
         foreach ( $search_variations as $term ) {
             $meta_query[] = array(
@@ -542,6 +572,10 @@ function get_post_results( $search_query, $paged ) {
             );
         }
         $post_args['meta_query'] = $meta_query;
+    } else {
+        // If we have no search terms, just return recent posts
+        $post_args['orderby'] = 'date';
+        $post_args['order'] = 'DESC';
     }
     
     $post_query = new WP_Query( $post_args );
@@ -674,28 +708,26 @@ function custom_search_ajax() {
         if ( $rolex_page ) {
             ob_start();
             ?>
-            <div class="post-results">
-                <div class="articles-grid">
-                    <article id="post-<?php echo $rolex_page->ID; ?>" <?php post_class('', $rolex_page->ID); ?>>
-                        <?php if ( has_post_thumbnail( $rolex_page->ID ) ) : ?>
-                            <div class="post-thumbnail">
-                                <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>">
-                                    <?php echo get_the_post_thumbnail( $rolex_page->ID, 'medium', array( 'class' => 'featured-image' ) ); ?>
-                                </a>
-                            </div>
-                        <?php endif; ?>
-                        <footer class="entry-footer">
-                            <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
-                                <?php if ($is_ms) {
-									echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
-								} else {
-									echo esc_html_e( 'Read More', 'webhero' ); 
-								}
-								?>
+            <div class="articles-grid">
+                <article id="post-<?php echo $rolex_page->ID; ?>" <?php post_class('', $rolex_page->ID); ?>>
+                    <?php if ( has_post_thumbnail( $rolex_page->ID ) ) : ?>
+                        <div class="post-thumbnail">
+                            <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>">
+                                <?php echo get_the_post_thumbnail( $rolex_page->ID, 'medium', array( 'class' => 'featured-image' ) ); ?>
                             </a>
-                        </footer>
-                    </article>
-                </div>
+                        </div>
+                    <?php endif; ?>
+                    <footer class="entry-footer">
+                        <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
+                            <?php if ($is_ms) {
+                                echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
+                            } else {
+                                echo esc_html_e( 'Read More', 'webhero' ); 
+                            }
+                            ?>
+                        </a>
+                    </footer>
+                </article>
             </div>
             <?php
             $rolex_html = ob_get_clean();
@@ -712,16 +744,173 @@ function custom_search_ajax() {
     $product_results = get_product_results( $search_query, $paged_products );
     $post_results    = get_post_results( $search_query, $paged_posts );
     
+    $collection_results = get_collection_results( $search_query );
+    
     wp_send_json_success( array(
+        'collection_content' => $collection_results,
         'product_content'    => $product_results,
         'product_pagination' => get_product_pagination( $search_query, $paged_products, $product_results['query'] ),
         'post_content'       => $post_results,
         'post_pagination'    => get_post_pagination( $search_query, $paged_posts ),
-        'has_results'        => ( $product_results['has_results'] || $post_results['has_results'] )
+        'has_results'        => ( $collection_results['has_results'] || $product_results['has_results'] || $post_results['has_results'] )
     ) );
 }
 add_action( 'wp_ajax_custom_search_ajax', 'custom_search_ajax' );
 add_action( 'wp_ajax_nopriv_custom_search_ajax', 'custom_search_ajax' );
+
+/**
+ * Get collection (product category) search results.
+ *
+ * @since 1.3
+ * @param string $search_query
+ * @return array
+ */
+function get_collection_results( $search_query ) {
+    global $wpdb;
+    
+    $search_query = trim( $search_query );
+    if ( empty( $search_query ) ) {
+        return array(
+            'html'        => '',
+            'has_results' => false,
+        );
+    }
+    
+    $search_variations = array(
+        $search_query,
+        str_replace( '-', ' ', $search_query ),
+        str_replace( ' ', '-', $search_query ),
+        str_replace( array( '-', ' ' ), '', $search_query )
+    );
+    $search_variations = array_unique( array_filter( $search_variations ) );
+    
+    $conditions = array();
+    $params = array();
+    
+    foreach ( $search_variations as $term ) {
+        $like = '%' . $wpdb->esc_like( $term ) . '%';
+        $conditions[] = $wpdb->prepare( "(t.name LIKE %s OR t.slug LIKE %s)", $like, $like );
+    }
+    
+    $where_clause = implode( ' OR ', $conditions );
+    
+    $sql = "
+        SELECT  t.term_id, 
+                t.name, 
+                t.slug, 
+                tt.taxonomy,
+                tt.term_taxonomy_id,
+                COUNT(*) AS product_count
+        FROM    {$wpdb->terms} AS t
+        INNER JOIN {$wpdb->term_taxonomy} AS tt ON t.term_id = tt.term_id
+        WHERE   tt.taxonomy = 'product_cat' 
+                AND ($where_clause)
+        GROUP BY t.term_id
+        LIMIT 6
+    ";
+    
+    $categories = $wpdb->get_results( $sql );
+    
+    // Filter out any duplicates by name (case insensitive)
+    $unique_names = array();
+    $unique_categories = array();
+    
+    foreach ($categories as $category) {
+        $lowercase_name = strtolower($category->name);
+        if (!in_array($lowercase_name, $unique_names)) {
+            $unique_names[] = $lowercase_name;
+            $unique_categories[] = $category;
+        }
+    }
+    
+    $categories = $unique_categories;
+    
+    if ( empty( $categories ) ) {
+        return array(
+            'html'        => '',
+            'has_results' => false,
+        );
+    }
+    
+    $current_url = $_SERVER['REQUEST_URI'];
+    $is_ms = strpos($current_url, 'ms/') !== false;
+    
+    ob_start();
+    echo '<div class="articles-grid">';
+    
+    foreach ( $categories as $category ) {
+        $term_id = $category->term_id;
+        
+        // First try to get category link using get_term_link with the term object instead of just ID
+        $category_obj = get_term($term_id, 'product_cat');
+        if (!is_wp_error($category_obj)) {
+            $category_link = get_term_link($category_obj);
+        } else {
+            // Fallback to trying by ID
+            $category_link = get_term_link($term_id, 'product_cat');
+        }
+        
+        // Final check if get_term_link returned an error
+        if (is_wp_error($category_link)) {
+            $category_link = home_url('/product-category/' . $category->slug); // Fallback URL using slug
+        }
+        
+        $thumbnail_id = get_term_meta($term_id, 'thumbnail_id', true);
+        if (!$thumbnail_id) {
+            // Try to get a product image from this category as fallback
+            $products = get_posts(array(
+                'post_type' => 'product',
+                'numberposts' => 1,
+                'tax_query' => array(array(
+                    'taxonomy' => 'product_cat',
+                    'field' => 'term_id',
+                    'terms' => $term_id
+                ))
+            ));
+            if (!empty($products) && has_post_thumbnail($products[0]->ID)) {
+                $thumbnail_id = get_post_thumbnail_id($products[0]->ID);
+            }
+        }
+        
+        $image = $thumbnail_id ? wp_get_attachment_image($thumbnail_id, 'full', false, array('class' => 'featured-image')) : '';
+        
+        ?>
+        <article id="category-<?php echo esc_attr($term_id); ?>" class="product-category">
+            <div class="post-thumbnail">
+                <a href="<?php echo esc_url($category_link); ?>">
+                    <?php if ($image): ?>
+                        <?php echo $image; ?>
+                    <?php else: ?>
+                        <div class="placeholder-image"></div>
+                    <?php endif; ?>
+                </a>
+            </div>
+            <header class="entry-header">
+                <h2 class="entry-title">
+                    <a href="<?php echo esc_url($category_link); ?>" rel="bookmark"><?php echo esc_html($category->name); ?></a>
+                </h2>
+            </header>
+            <footer class="entry-footer">
+                <a href="<?php echo esc_url($category_link); ?>" class="read-more">
+                    <?php if ($is_ms) {
+                        echo esc_html_e('Maklumat lanjut', 'webhero');
+                    } else {
+                        echo esc_html_e('Read More', 'webhero');
+                    }
+                    ?>
+                </a>
+            </footer>
+        </article>
+        <?php
+    }
+    
+    echo '</div>';
+    
+    return array(
+        'html'        => ob_get_clean(),
+        'has_results' => true,
+    );
+}
 
 /**
  * Enqueue custom search inline scripts.
@@ -796,6 +985,7 @@ function enqueue_custom_search_inline_scripts() {
                     
                     // Only reset everything for a brand new search, not for pagination
                     if (isNewSearch) {
+                        $('.collection-results').hide();
                         productResults.hide();
                         postResults.hide();
                     }
@@ -806,12 +996,15 @@ function enqueue_custom_search_inline_scripts() {
                         postResults.html(response.data.rolex_html);
                         postResults.show();
                         
-                        // Update search title
-                        if (currentUrl.includes('ms/')) {
-							searchTitle.text('Hasil Carian untuk: ' + query);
-						} else {
-							searchTitle.text('Search Results for: ' + query);
-						}
+                        // Update search title - always refresh reference first
+                        var searchTitle = $('.search-title');
+                        if (searchTitle.length > 0) {
+                            if (currentUrl.includes('ms/')) {
+                                searchTitle.text('Hasil Carian untuk: ' + query);
+                            } else {
+                                searchTitle.text('Search Results for: ' + query);
+                            }
+                        }
                         
                         searchResults.removeClass('loading');
                         searchButton.prop('disabled', false).removeClass('loading');
@@ -824,6 +1017,54 @@ function enqueue_custom_search_inline_scripts() {
                     }
                     
                     // Normal search results handling for non-Rolex searches
+                    // First, handle collection results
+                    if (response.data.collection_content && response.data.collection_content.has_results) {
+                        var collectionResults = $('.collection-results');
+                        
+                        // If collection results section doesn't exist, create it
+                        if (collectionResults.length === 0) {
+                            collectionResults = $('<div class=\"collection-results\"></div>');
+                            
+                            // Insert after search title
+                            var searchTitle = $('.search-title');
+                            if (searchTitle.length > 0) {
+                                searchTitle.after(collectionResults);
+                            } else {
+                                // Fallback if search title not found
+                                searchResults.prepend(collectionResults);
+                            }
+                            
+                            // Add section title
+                            var titleElement = $('<h2 class=\"section-title\"></h2>');
+                            if (currentUrl.includes('ms/')) {
+                                titleElement.text('Koleksi');
+                            } else {
+                                titleElement.text('Collections');
+                            }
+                            collectionResults.append(titleElement);
+                            
+                            // Add description
+                            var descElement = $('<p class=\"search-description\"></p>');
+                            if (currentUrl.includes('ms/')) {
+                                descElement.text('Terokai koleksi kami berdasarkan carian anda');
+                            } else {
+                                descElement.text('Explore our collections based on your search');
+                            }
+                            collectionResults.append(descElement);
+                            
+                            // Add loading indicator
+                            var loadingElement = $('<div class=\"loading-indicator\" style=\"display: none;\">Loading...</div>');
+                            collectionResults.append(loadingElement);
+                            
+                            // Add collection container
+                            var collectionContainer = $('<div class=\"collection-container\"></div>');
+                            collectionResults.append(collectionContainer);
+                        }
+                        
+                        collectionResults.find('.collection-container').html(response.data.collection_content.html);
+                        collectionResults.show();
+                    }
+                    
                     if (updateProducts && response.data.product_content) {
                         if (response.data.product_content.has_results) {
                             productResults.find('.products-container').html(response.data.product_content.html);
@@ -874,18 +1115,22 @@ function enqueue_custom_search_inline_scripts() {
                             postResults.show();
                         }
                     }
-                    if (query && query.trim() !== '') {
-						if (currentUrl.includes('ms/')) {
-							searchTitle.text('Hasil Carian untuk: ' + query);
-						} else {
-							searchTitle.text('Search Results for: ' + query);
-						}
-                    } else {
-						if (currentUrl.includes('ms/')) {
-							searchTitle.text('Semua Jam Tangan dan Artikel');
-						} else {
-							searchTitle.text('All Watches and Articles');
-						}
+                    // Always refresh the searchTitle reference before using it
+                    var searchTitle = $('.search-title');
+                    if (searchTitle.length > 0) {
+                        if (query && query.trim() !== '') {
+                            if (currentUrl.includes('ms/')) {
+                                searchTitle.text('Hasil Carian untuk: ' + query);
+                            } else {
+                                searchTitle.text('Search Results for: ' + query);
+                            }
+                        } else {
+                            if (currentUrl.includes('ms/')) {
+                                searchTitle.text('Semua Jam Tangan dan Artikel');
+                            } else {
+                                searchTitle.text('All Watches and Articles');
+                            }
+                        }
                     }
                     searchResults.removeClass('loading');
                     searchButton.prop('disabled', false).removeClass('loading');
@@ -1064,9 +1309,10 @@ function add_custom_search_styles() {
             margin-bottom: 30px;
             text-align: center;
         }
-        .custom-search-results .product-results,
-        .custom-search-results .post-results {
-            margin-bottom: 40px;
+        .custom-search-results {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
         }
         .custom-search-results .section-title {
             font-family: var(--font-display);
@@ -1130,6 +1376,16 @@ function add_custom_search_styles() {
             background: var(--primary-color-1);
             color: white;
         }
+        
+        /* Placeholder image for categories without thumbnails */
+        .custom-search-results .placeholder-image {
+            background-color: #f0f0f0;
+            width: 100%;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         .custom-search-results .pagination .prev,
         .custom-search-results .pagination .next {
             font-weight: bold;
@@ -1175,12 +1431,14 @@ function add_custom_search_styles() {
             grid-template-columns: repeat(3, 1fr);
             gap: 20px;
         }
-        .custom-search-results .post-results article {
+        .custom-search-results .post-results article,
+        .custom-search-results .collection-results article {
             border: 1px solid #eee;
             padding: 15px;
             border-radius: 5px;
         }
-        .custom-search-results .post-results .post-thumbnail {
+        .custom-search-results .post-results .post-thumbnail,
+        .custom-search-results .collection-results .post-thumbnail {
             margin-bottom: 15px;
         }
         .custom-search-results .post-results .post-thumbnail img {
@@ -1188,18 +1446,22 @@ function add_custom_search_styles() {
             height: auto;
             border-radius: 5px;
         }
-        .custom-search-results .post-results .entry-title {
+        .custom-search-results .post-results .entry-title,
+        .custom-search-results .collection-results .entry-title {
             font-size: 18px;
             margin-bottom: 10px;
         }
-        .custom-search-results .post-results .entry-title a {
+        .custom-search-results .post-results .entry-title a,
+        .custom-search-results .collection-results .entry-title a {
             color: var(--primary-color-3);
             text-decoration: none;
         }
-        .custom-search-results .post-results .entry-title a:hover {
+        .custom-search-results .post-results .entry-title a:hover,
+        .custom-search-results .collection-results .entry-title a:hover {
             color: var(--primary-color-1);
         }
-        .custom-search-results .post-results .read-more {
+        .custom-search-results .post-results .read-more,
+        .custom-search-results .collection-results .read-more {
             display: inline-block;
             padding: 5px 10px;
             background-color: var(--primary-color-1);
@@ -1207,7 +1469,8 @@ function add_custom_search_styles() {
             text-decoration: none;
             border-radius: 3px;
         }
-        .custom-search-results .post-results .read-more:hover {
+        .custom-search-results .post-results .read-more:hover,
+        .custom-search-results .collection-results .read-more:hover {
             background-color: var(--primary-color-1);
         }
         @media (max-width: 768px) {
