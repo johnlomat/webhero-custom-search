@@ -3,7 +3,7 @@
  * Custom Search Implementation
  *
  * @package WebHero
- * @since 1.3
+ * @since 1.4
  */
 
 // Exit if accessed directly.
@@ -225,8 +225,17 @@ function custom_search_results() {
         <?php endif; ?>
         
         <?php 
+        // By default, show watches section
+        $hide_watches_section = false;
+        
+        // Only hide watches section when collections are ACTUALLY shown (has results)
+        if (isset($collection_results) && !empty($collection_results['has_results']) && $collection_results['has_results'] === true) {
+            $hide_watches_section = true;
+        }
+        
         $product_results = get_product_results( $search_query, $paged_products );
-        if ( $product_results['has_results'] ) : ?>
+
+        if ( $product_results['has_results'] && !$hide_watches_section ) : ?>
             <div class="product-results">
                 <h2 class="section-title">
 					<?php if ($is_ms) {
@@ -1017,8 +1026,11 @@ function enqueue_custom_search_inline_scripts() {
                     }
                     
                     // Normal search results handling for non-Rolex searches
-                    // First, handle collection results
-                    if (response.data.collection_content && response.data.collection_content.has_results) {
+                    // Track if we should hide watches section
+                    var hideWatchesSection = false;
+                    
+                    // First, handle collection results - only hide watches if collections actually have results
+                    if (response.data.collection_content && response.data.collection_content.has_results === true) {
                         var collectionResults = $('.collection-results');
                         
                         // If collection results section doesn't exist, create it
@@ -1063,13 +1075,27 @@ function enqueue_custom_search_inline_scripts() {
                         
                         collectionResults.find('.collection-container').html(response.data.collection_content.html);
                         collectionResults.show();
+                        
+                        // Hide watches section when collections are present
+                        if (response.data.collection_content.html) {
+                            hideWatchesSection = true;
+                        }
                     }
                     
                     if (updateProducts && response.data.product_content) {
                         if (response.data.product_content.has_results) {
                             productResults.find('.products-container').html(response.data.product_content.html);
                             productResults.find('.product-pagination').html(response.data.product_pagination);
-                            productResults.show();
+                            
+                            // Only hide watches if we have collections with actual results
+                            if (hideWatchesSection) {
+                                productResults.hide();
+                            } else {
+                                productResults.show();
+                            }
+                        } else {
+                            // No product results
+                            productResults.hide();
                         }
                     }
                     
