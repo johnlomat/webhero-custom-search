@@ -519,7 +519,7 @@ function get_product_pagination( $search_query, $paged, $product_query ) {
 }
 
 /**
- * Get post search results.
+ * Get post search results with improved relevance.
  *
  * @since 1.2
  * @param string $search_query
@@ -531,6 +531,70 @@ function get_post_results( $search_query, $paged ) {
     
     $posts_per_page = 15;
     $search_query   = trim( $search_query );
+    
+    // Skip processing for very short search terms (less than 2 characters)
+    // But still show recent posts in this case
+    if ( strlen( $search_query ) < 2 ) {
+        // For very short queries, just return recent posts
+        $current_lang = apply_filters( 'wpml_current_language', null );
+        $post_args = array(
+            'post_type'      => 'post',
+            'posts_per_page' => $posts_per_page,
+            'paged'          => $paged,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'lang'           => $current_lang,
+        );
+        $post_query = new WP_Query( $post_args );
+        
+        // Return with standard rendering (no changes to display)
+        $current_url = $_SERVER['REQUEST_URI'];
+        $is_ms = strpos($current_url, 'ms/') !== false;
+        ob_start();
+        if ( $post_query->have_posts() ) :
+            echo '<div class="articles-grid">';
+            while ( $post_query->have_posts() ) :
+                $post_query->the_post();
+                ?>
+                <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+                    <?php if ( has_post_thumbnail() ) : ?>
+                        <div class="post-thumbnail">
+                            <a href="<?php the_permalink(); ?>">
+                                <?php the_post_thumbnail( 'medium', array( 'class' => 'featured-image' ) ); ?>
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                    <header class="entry-header">
+                        <h2 class="entry-title">
+                            <a href="<?php the_permalink(); ?>" rel="bookmark"><?php the_title(); ?></a>
+                        </h2>
+                    </header>
+                    <footer class="entry-footer">
+                        <a href="<?php the_permalink(); ?>" class="read-more">
+                            <?php if ($is_ms) {
+                                echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
+                            } else {
+                                echo esc_html_e( 'Read More', 'webhero' ); 
+                            }
+                            ?>
+                        </a>
+                    </footer>
+                </article>
+                <?php
+            endwhile;
+            echo '</div>';
+        else :
+            echo '<p>' . esc_html__( 'No articles found.', 'webhero' ) . '</p>';
+        endif;
+        wp_reset_postdata();
+        
+        return array(
+            'html'        => ob_get_clean(),
+            'has_results' => $post_query->have_posts(),
+        );
+    }
+    
+    // Prepare search variations - keep the same as original for compatibility
     $search_variations = array(
         $search_query,
         str_replace( '-', ' ', $search_query ),
@@ -539,55 +603,194 @@ function get_post_results( $search_query, $paged ) {
     );
     $search_variations = array_unique( array_filter( $search_variations ) );
     
-    // No limit here; we keep fallback the same to avoid major logic changes
-    $conditions = array();
+    // Prepare for relevance-based search
+    $scored_posts = array();
+    
     foreach ( $search_variations as $term ) {
-        $like_term = '%' . $wpdb->esc_like( $term ) . '%';
-        $conditions[] = $wpdb->prepare( "(post_title LIKE %s OR post_content LIKE %s)", $like_term, $like_term );
-    }
-    
-    $post_ids = array();
-    
-    // Only execute the query if we have conditions
-    if ( ! empty( $conditions ) ) {
-        $where_clause = implode( ' OR ', $conditions );
-        
-        $post_ids = $wpdb->get_col(
-            "SELECT ID FROM {$wpdb->posts}
-             WHERE post_type = 'post'
-             AND post_status = 'publish'
-             AND (" . $where_clause . ")"
+        // Search for exact matches in title (highest priority)
+        $exact_title_matches = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ID, post_title, 10 AS score 
+                 FROM {$wpdb->posts} 
+                 WHERE post_type = 'post' 
+                 AND post_status = 'publish' 
+                 AND post_title = %s",
+                $term
+            )
         );
+        
+        // Search for title beginning with term (high priority)
+        $title_start_matches = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ID, post_title, 8 AS score 
+                 FROM {$wpdb->posts} 
+                 WHERE post_type = 'post' 
+                 AND post_status = 'publish' 
+                 AND post_title LIKE %s",
+                $term . '%'
+            )
+        );
+        
+        // Search for term in title (medium-high priority)
+        $title_contains_matches = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ID, post_title, 5 AS score 
+                 FROM {$wpdb->posts} 
+                 WHERE post_type = 'post' 
+                 AND post_status = 'publish' 
+                 AND post_title LIKE %s",
+                '%' . $term . '%'
+            )
+        );
+        
+        // Search for term in content (medium priority) - IMPORTANT: This ensures content is searched
+        $content_matches = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ID, post_title, post_content, 3 AS score 
+                 FROM {$wpdb->posts} 
+                 WHERE post_type = 'post' 
+                 AND post_status = 'publish' 
+                 AND post_content LIKE %s",
+                '%' . $term . '%'
+            )
+        );
+        
+        // Further verify content matches by checking for visible text
+        // This prevents matching shortcodes, HTML comments, or hidden metadata
+        $content_matches = array_filter($content_matches, function($post) use ($term) {
+            // Strip shortcodes and tags to get only visible content
+            $visible_content = wp_strip_all_tags(strip_shortcodes($post->post_content));
+            
+            // Remove common WordPress hidden data that might cause false matches
+            $visible_content = preg_replace('/\<!-- .*? --\>/', '', $visible_content); // Remove HTML comments
+            $visible_content = preg_replace('/\[.*?\]/', '', $visible_content); // Remove any remaining shortcodes
+            
+            // Convert everything to lowercase for case-insensitive comparison
+            $visible_content = strtolower($visible_content);
+            $search_term = strtolower($term);
+            
+            // For short terms, be more strict about matching (require word boundaries)
+            if (strlen($search_term) < 5) {
+                // Use word boundary check for short terms to avoid partial word matches
+                return preg_match('/\b' . preg_quote($search_term, '/') . '\b/i', $visible_content);
+            } else {
+                // For longer terms, simple presence is enough
+                return strpos($visible_content, $search_term) !== false;
+            }
+        });
+        
+        // Combine all results
+        $all_matches = array_merge(
+            $exact_title_matches, 
+            $title_start_matches, 
+            $title_contains_matches, 
+            $content_matches  // Content matches are included but with lower priority than title
+        );
+        
+        // Record scores for each post
+        foreach ( $all_matches as $post ) {
+            $post_id = $post->ID;
+            
+            // Only add matches with actual relevance
+            // For content matches, require more specific matches (don't match every post with common words)
+            if ($post->score == 3) {
+                if (strpos($term, ' ') === false && strlen($term) < 4) {
+                    // Skip very short single-word content matches as they're likely to be irrelevant
+                    continue;
+                }
+                
+                // Store why this post matched for debugging
+                if (!isset($post->match_reason)) {
+                    $post->match_reason = 'Content contains: ' . $term;
+                }
+            } elseif ($post->score == 5) {
+                $post->match_reason = 'Title contains: ' . $term;
+            } elseif ($post->score == 8) {
+                $post->match_reason = 'Title starts with: ' . $term;
+            } elseif ($post->score == 10) {
+                $post->match_reason = 'Title exactly matches: ' . $term;
+            }
+            
+            if ( !isset($scored_posts[$post_id]) ) {
+                $scored_posts[$post_id] = array(
+                    'id' => $post_id,
+                    'title' => $post->post_title,
+                    'score' => $post->score,
+                    'match_reason' => isset($post->match_reason) ? $post->match_reason : 'Unknown match'
+                );
+            } else {
+                // Add to existing score
+                $scored_posts[$post_id]['score'] += $post->score;
+            }
+        }
     }
+    
+    // Filter out posts with low relevance scores
+    // Set threshold based on context
+    $is_ajax = defined('DOING_AJAX') && DOING_AJAX;
+    $is_debug = (isset($_GET['debug_search']) && $_GET['debug_search'] == '1') || 
+               (isset($_COOKIE['debug_search']) && $_COOKIE['debug_search'] == '1');
+    
+    // Balanced thresholds that work well for normal searching
+    $min_score = $is_debug ? 1 : 3; // Use same threshold for both AJAX and normal
+    
+    $filtered_posts = array_filter($scored_posts, function($post) use ($min_score, $search_query, $is_debug) {
+        // For multi-word searches, be more lenient
+        if (strpos($search_query, ' ') !== false && $post['score'] >= 3) {
+            return true;
+        }
+        
+        // Special case for title matches - always include regardless of score
+        if (strpos($post['match_reason'], 'Title') !== false) {
+            return true;
+        }
+        
+        // In debug mode, show all matches with any score for visibility
+        if ($is_debug) {
+            return true;
+        }
+        
+        return $post['score'] >= $min_score;
+    });
+    
+    // Sort posts by score (highest first)
+    usort($filtered_posts, function($a, $b) {
+        return $b['score'] - $a['score'];
+    });
+    
+    // Extract post IDs in score order
+    $post_ids = array_map(function($post) {
+        // Store match reasons as post meta for debugging
+        if (isset($post['match_reason'])) {
+            update_post_meta($post['id'], '_search_match_reason', $post['match_reason']);
+        }
+        return $post['id'];
+    }, $filtered_posts);
+    
+    // Use WP_Query with our scored results
     $current_lang = apply_filters( 'wpml_current_language', null );
-
     $post_args = array(
         'post_type'      => 'post',
         'posts_per_page' => $posts_per_page,
         'paged'          => $paged,
-		'lang'           => $current_lang,
+        'lang'           => $current_lang,
     );
     
-    if ( ! empty( $post_ids ) ) {
+    if ( !empty($post_ids) ) {
         $post_args['post__in'] = $post_ids;
-        $post_args['orderby']  = 'post__in';
-    } else if ( ! empty( $search_variations ) ) {
-        // Only add meta_query if we have search terms
-        $meta_query = array( 'relation' => 'OR' );
-        foreach ( $search_variations as $term ) {
-            $meta_query[] = array(
-                'value'   => $term,
-                'compare' => 'LIKE',
-            );
-        }
-        $post_args['meta_query'] = $meta_query;
+        $post_args['orderby'] = 'post__in'; // Preserve our relevance ordering
+    } else if (!empty($search_query)) {
+        // If we have search terms but no matches that meet our relevance threshold,
+        // force an empty result set rather than showing recent posts
+        $post_args['post__in'] = [0]; // Force no results
     } else {
-        // If we have no search terms, just return recent posts
+        // Only return recent posts when no search was performed
         $post_args['orderby'] = 'date';
         $post_args['order'] = 'DESC';
     }
     
     $post_query = new WP_Query( $post_args );
+
     $current_url = $_SERVER['REQUEST_URI'];
 	$is_ms = strpos($current_url, 'ms/') !== false;
     ob_start();
@@ -608,6 +811,19 @@ function get_post_results( $search_query, $paged ) {
                     <h2 class="entry-title">
                         <a href="<?php the_permalink(); ?>" rel="bookmark"><?php the_title(); ?></a>
                     </h2>
+                    <?php 
+                    // Check if debug is enabled via query param or cookies
+                    $debug_search = (isset($_GET['debug_search']) && $_GET['debug_search'] == '1') || 
+                                   (isset($_COOKIE['debug_search']) && $_COOKIE['debug_search'] == '1');
+                    if ($debug_search) :
+                        $post_id = get_the_ID();
+                        $match_reasons = get_post_meta($post_id, '_search_match_reason', true);
+                        if ($match_reasons) : ?>
+                            <div class="search-debug-info" style="background: #f8f8f8; padding: 8px; font-size: 11px; border: 1px solid #ddd; margin-top: 5px;">
+                                <strong>Debug:</strong> <?php echo esc_html($match_reasons); ?>
+                            </div>
+                        <?php endif; 
+                    endif; ?>
                 </header>
                 <footer class="entry-footer">
                     <a href="<?php the_permalink(); ?>" class="read-more">
@@ -690,6 +906,17 @@ function custom_search_ajax() {
     $search_query   = isset( $_POST['search_query'] ) ? sanitize_text_field( wp_unslash( $_POST['search_query'] ) ) : '';
     $paged_products = isset( $_POST['paged_products'] ) ? absint( $_POST['paged_products'] ) : 1;
     $paged_posts    = isset( $_POST['paged_posts'] ) ? absint( $_POST['paged_posts'] ) : 1;
+    
+    // Define minimum search query length for AJAX searches
+    if (strlen($search_query) < 3 && strlen($search_query) > 0) {
+        wp_send_json_success(array(
+            'collection_content' => array('has_results' => false, 'html' => ''),
+            'product_content'    => array('has_results' => false, 'html' => ''),
+            'post_content'       => array('has_results' => false, 'html' => '<p>Please enter at least 3 characters to search.</p>'),
+            'has_results'        => false
+        ));
+        return;
+    }
     
     // Only apply rate limiting for new searches (when both page numbers are 1)
     // This allows pagination to work without hitting the rate limit
@@ -967,6 +1194,14 @@ function enqueue_custom_search_inline_scripts() {
         });
 
         function performSearch(query, pagedProducts, pagedPosts, updateProducts, updatePosts, isNewSearch) {
+            // Initialize debug mode from URL or cookie
+            var debug_mode = window.location.search.indexOf('debug_search=1') !== -1 || document.cookie.indexOf('debug_search=1') !== -1;
+            
+            // Add debug button if not already present
+            if (debug_mode && $('.debug-search-status').length === 0) {
+                var debugStatusEl = $('<div class=\"debug-search-status\" style=\"position:fixed; bottom:10px; right:10px; background:#f8f8f8; border:1px solid #ddd; padding:5px; z-index:9999;\">Debug Mode: ON</div>');
+                $('body').append(debugStatusEl);
+            }
             searchResults.addClass('loading');
             searchButton.prop('disabled', true).addClass('loading');
             
@@ -1020,7 +1255,20 @@ function enqueue_custom_search_inline_scripts() {
                         
                         // Update URL
                         var newUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
-                        if (query) newUrl += '?q=' + encodeURIComponent(query);
+                        var params = [];
+                        if (query) params.push('q=' + encodeURIComponent(query));
+                        
+                        // Preserve debug parameter if present
+                        if (window.location.search.indexOf('debug_search=1') !== -1) {
+                            params.push('debug_search=1');
+                            
+                            // Also save it as a cookie for 30 days
+                            var date = new Date();
+                            date.setTime(date.getTime() + (30 * 24 * 60 * 60 * 1000));
+                            document.cookie = \"debug_search=1; expires=\" + date.toUTCString() + \"; path=/\";
+                        }
+                        
+                        if (params.length) newUrl += '?' + params.join('&');
                         window.history.pushState({path: newUrl}, '', newUrl);
                         return;
                     }
@@ -1166,6 +1414,17 @@ function enqueue_custom_search_inline_scripts() {
                     if (query) params.push('q=' + encodeURIComponent(query));
                     if (pagedProducts > 1) params.push('paged_products=' + pagedProducts);
                     if (pagedPosts > 1) params.push('paged_posts=' + pagedPosts);
+                    
+                    // Preserve debug parameter if present
+                    if (window.location.search.indexOf('debug_search=1') !== -1) {
+                        params.push('debug_search=1');
+                        
+                        // Also save it as a cookie for 30 days
+                        var date = new Date();
+                        date.setTime(date.getTime() + (30 * 24 * 60 * 60 * 1000));
+                        document.cookie = \"debug_search=1; expires=\" + date.toUTCString() + \"; path=/\";
+                    }
+                    
                     if (params.length) newUrl += '?' + params.join('&');
                     window.history.pushState({path: newUrl}, '', newUrl);
                 },
