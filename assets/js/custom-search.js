@@ -48,7 +48,6 @@
         var searchForm = $('.custom-search-form');
         var searchButton = searchForm.find('button');
         var searchResults = $('.custom-search-results');
-        var productResults = $('.product-results');
         var postResults = $('.post-results');
         var searchTitle = $('.search-title');
 
@@ -66,7 +65,7 @@
             $input.val('').trigger('input').focus();
         });
 
-        function performSearch(query, pagedProducts, pagedPosts, updateProducts, updatePosts, isNewSearch) {
+        function performSearch(query, pagedPosts, updatePosts, isNewSearch) {
             // Initialize debug mode from URL or cookie
             var debug_mode = window.location.search.indexOf('debug_search=1') !== -1 || document.cookie.indexOf('debug_search=1') !== -1;
             
@@ -87,7 +86,6 @@
                 data: {
                     action: 'webhero_cs_ajax_handler',
                     search_query: query,
-                    paged_products: pagedProducts,
                     paged_posts: pagedPosts,
                     security: webhero_cs_params.nonce
                 },
@@ -103,7 +101,7 @@
                     // Only reset everything for a brand new search, not for pagination
                     if (isNewSearch) {
                         $('.collection-results').hide();
-                        productResults.hide();
+                        $('.product-results').hide();
                         postResults.hide();
                     }
                     
@@ -197,26 +195,9 @@
                         collectionResults.find('.collection-container').html(response.data.collection_content.html);
                         collectionResults.show();
                         
-                        // Hide watches section when collections are present
+                        // Collections found and shown
                         if (response.data.collection_content.html) {
                             hideWatchesSection = true;
-                        }
-                    }
-                    
-                    if (updateProducts && response.data.product_content) {
-                        if (response.data.product_content.has_results) {
-                            productResults.find('.products-container').html(response.data.product_content.html);
-                            productResults.find('.product-pagination').html(response.data.product_pagination);
-                            
-                            // Only hide watches if we have collections with actual results
-                            if (hideWatchesSection) {
-                                productResults.hide();
-                            } else {
-                                productResults.show();
-                            }
-                        } else {
-                            // No product results
-                            productResults.hide();
                         }
                     }
                     
@@ -285,7 +266,6 @@
                     var newUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
                     var params = [];
                     if (query) params.push('q=' + encodeURIComponent(query));
-                    if (pagedProducts > 1) params.push('paged_products=' + pagedProducts);
                     if (pagedPosts > 1) params.push('paged_posts=' + pagedPosts);
                     
                     // Preserve debug parameter if present
@@ -314,20 +294,17 @@
             e.preventDefault();
             var query = $(this).find('input[name="q"]').val();
             // This is a new search, so we'll pass true for isNewSearch
-            performSearch(query, 1, 1, true, true, true);
+            performSearch(query, 1, true, true);
         });
 
-        $(document).on('click', '.product-pagination a, .post-pagination a', function(e) {
+        $(document).on('click', '.post-pagination a', function(e) {
             e.preventDefault();
             var link = $(this);
             var query = searchForm.find('input[name="q"]').val();
-            var isProduct = link.closest('.product-pagination').length;
-            
-            var pagedProducts = isProduct ? getPageNumber(link) : (productResults.find('.product-pagination .active').text() || 1);
-            var pagedPosts = !isProduct ? getPageNumber(link) : (postResults.find('.post-pagination .active').text() || 1);
+            var pagedPosts = getPageNumber(link);
             
             // This is pagination, not a new search, so pass false for isNewSearch
-            performSearch(query, pagedProducts, pagedPosts, isProduct, !isProduct, false);
+            performSearch(query, pagedPosts, true, false);
         });
     });
 })(jQuery);

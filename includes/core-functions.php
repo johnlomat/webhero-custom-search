@@ -48,25 +48,8 @@ function webhero_cs_get_client_ip() {
  */
 function webhero_cs_preserve_query_vars( $query_vars ) {
     $query_vars[] = 'q';
-    $query_vars[] = 'paged_products';
     $query_vars[] = 'paged_posts';
     $query_vars[] = 'debug';
     return $query_vars;
 }
 add_filter( 'query_vars', 'webhero_cs_preserve_query_vars' );
-
-/**
- * Remove price from WooCommerce product loops.
- */
-function webhero_cs_remove_loop_price() {
-    remove_action( 'woocommerce_after_shop_loop_item_title', 'woocommerce_template_loop_price', 10 );
-}
-add_action( 'init', 'webhero_cs_remove_loop_price' );
-
-/**
- * Remove "Add to Cart" button from WooCommerce product loops.
- */
-function webhero_cs_remove_loop_add_to_cart() {
-    remove_action( 'woocommerce_after_shop_loop_item', 'woocommerce_template_loop_add_to_cart', 10 );
-}
-add_action( 'init', 'webhero_cs_remove_loop_add_to_cart' );

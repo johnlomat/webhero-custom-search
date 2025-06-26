@@ -48,205 +48,6 @@ function webhero_cs_filter_to_rolex( $args ) {
 }
 
 /**
- * Get product search results using a combined SQL query with enhanced partial matching.
- *
- * @since 1.0.0
- * @param string $search_query     The search query term
- * @param int    $paged            Current page number
- * @param bool   $is_short_term    Whether this is a short search term (<=4 chars)
- * @param bool   $is_model_number  Whether this appears to be a model number search
- * @return array
- */
-function webhero_cs_get_product_results( $search_query, $paged, $is_short_term = false, $is_model_number = false ) {
-    global $wpdb;
-    
-    // Sanitize and prepare search query
-    $search_query = sanitize_text_field( $search_query );
-    $like_search_query = '%' . $wpdb->esc_like( $search_query ) . '%';
-    
-    // Set up pagination
-    $posts_per_page = 12;
-    $offset = ( $paged - 1 ) * $posts_per_page;
-    
-    // Get product post type
-    $product_post_type = 'product';
-    
-    // Build the query based on search type
-    if ( $is_model_number ) {
-        // For model numbers, prioritize exact matches in title and SKU
-        $query_args = array(
-            'post_type'      => $product_post_type,
-            'post_status'    => 'publish',
-            'posts_per_page' => $posts_per_page,
-            'paged'          => $paged,
-            'meta_query'     => array(
-                'relation' => 'OR',
-                array(
-                    'key'     => '_sku',
-                    'value'   => $search_query,
-                    'compare' => 'LIKE',
-                ),
-            ),
-            'tax_query' => array(
-                array(
-                    'taxonomy' => 'product_visibility',
-                    'field'    => 'name',
-                    'terms'    => 'exclude-from-search',
-                    'operator' => 'NOT IN',
-                ),
-            ),
-        );
-        
-        // Filter to Rolex products only
-        $query_args = webhero_cs_filter_to_rolex( $query_args );
-        $product_query = new WP_Query( $query_args );
-    } elseif ( $is_short_term ) {
-        // For short terms, use a more precise search to avoid too many irrelevant results
-        $query_args = array(
-            'post_type'      => $product_post_type,
-            'post_status'    => 'publish',
-            'posts_per_page' => $posts_per_page,
-            'paged'          => $paged,
-            's'              => $search_query,
-            'exact'          => true,
-            'sentence'       => true,
-            'tax_query'      => array(
-                array(
-                    'taxonomy' => 'product_visibility',
-                    'field'    => 'name',
-                    'terms'    => 'exclude-from-search',
-                    'operator' => 'NOT IN',
-                ),
-            ),
-        );
-        
-        // Filter to Rolex products only
-        $query_args = webhero_cs_filter_to_rolex( $query_args );
-        $product_query = new WP_Query( $query_args );
-    } else {
-        // For normal searches, use standard WP_Query with product-specific enhancements
-        $query_args = array(
-            'post_type'      => $product_post_type,
-            'post_status'    => 'publish',
-            'posts_per_page' => $posts_per_page,
-            'paged'          => $paged,
-            's'              => $search_query,
-            'tax_query'      => array(
-                array(
-                    'taxonomy' => 'product_visibility',
-                    'field'    => 'name',
-                    'terms'    => 'exclude-from-search',
-                    'operator' => 'NOT IN',
-                ),
-            ),
-        );
-        
-        // Filter to Rolex products only
-        $query_args = webhero_cs_filter_to_rolex( $query_args );
-        $product_query = new WP_Query( $query_args );
-    }
-    
-    // Prepare the results
-    $results = array(
-        'has_results' => false,
-        'html'        => '',
-        'found_posts' => 0,
-        'query'       => $product_query,
-    );
-    
-    if ( $product_query->have_posts() ) {
-        $results['has_results'] = true;
-        $results['found_posts'] = $product_query->found_posts;
-        
-        ob_start();
-        while ( $product_query->have_posts() ) {
-            $product_query->the_post();
-            $product_id = get_the_ID();
-            $product = wc_get_product( $product_id );
-            
-            if ( ! $product ) {
-                continue;
-            }
-            
-            $image = wp_get_attachment_image_src( get_post_thumbnail_id( $product_id ), 'medium' );
-            $image_url = $image ? $image[0] : wc_placeholder_img_src();
-            ?>
-            <div class="product-item">
-                <a href="<?php echo esc_url( get_permalink() ); ?>">
-                    <div class="product-image" style="background-image: url('<?php echo esc_url( $image_url ); ?>');"></div>
-                    <div class="product-info">
-                        <h3 class="product-title"><?php the_title(); ?></h3>
-                        <div class="product-meta">
-                            <?php 
-                            // Display SKU if available
-                            $sku = $product->get_sku();
-                            if ( $sku ) {
-                                echo '<span class="product-sku">REF: ' . esc_html( $sku ) . '</span>';
-                            }
-                            ?>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            <?php
-        }
-        $results['html'] = ob_get_clean();
-        wp_reset_postdata();
-    }
-    
-    return $results;
-}
-
-/**
- * Get product pagination.
- *
- * @since 1.0.0
- * @param string   $search_query
- * @param int      $paged
- * @param WP_Query $product_query
- * @return string
- */
-function webhero_cs_get_product_pagination( $search_query, $paged, $product_query ) {
-    $total_pages = $product_query->max_num_pages;
-    
-    if ( $total_pages <= 1 ) {
-        return '';
-    }
-    
-    $pagination = '<ul class="pagination">';
-    
-    // Previous page
-    if ( $paged > 1 ) {
-        $pagination .= '<li class="page-item"><a href="#" aria-label="Previous">&laquo;</a></li>';
-    } else {
-        $pagination .= '<li class="page-item disabled"><span>&laquo;</span></li>';
-    }
-    
-    // Page numbers
-    $start_page = max( 1, $paged - 2 );
-    $end_page = min( $total_pages, $paged + 2 );
-    
-    for ( $i = $start_page; $i <= $end_page; $i++ ) {
-        if ( $i == $paged ) {
-            $pagination .= '<li class="page-item active"><span>' . $i . '</span></li>';
-        } else {
-            $pagination .= '<li class="page-item"><a href="#">' . $i . '</a></li>';
-        }
-    }
-    
-    // Next page
-    if ( $paged < $total_pages ) {
-        $pagination .= '<li class="page-item"><a href="#" aria-label="Next">&raquo;</a></li>';
-    } else {
-        $pagination .= '<li class="page-item disabled"><span>&raquo;</span></li>';
-    }
-    
-    $pagination .= '</ul>';
-    
-    return $pagination;
-}
-
-/**
  * Get post search results with improved relevance.
  *
  * @since 1.0.0
@@ -491,85 +292,107 @@ function webhero_cs_get_collection_results( $search_query ) {
         'html'        => '',
     );
     
-    // If search query is empty or specifically 'collections', show all Rolex collections
-    if ( empty( $search_query ) || strtolower( $search_query ) === 'collections' ) {
-        // Get parent Rolex category
-        $rolex_term = get_term_by( 'slug', 'rolex', 'product_cat' );
-        
-        if ( $rolex_term ) {
-            // Get child categories of Rolex
-            $categories = get_terms( array(
+    // Get parent Rolex category
+    $rolex_term = get_term_by( 'slug', 'rolex', 'product_cat' );
+    if ( ! $rolex_term ) {
+        return $results; // Return empty results if Rolex category not found
+    }
+    
+    $grandchildren_categories = array();
+    
+    // Get all second-level children first (to find their children)
+    $second_level_categories = get_terms( array(
+        'taxonomy'   => 'product_cat',
+        'hide_empty' => true,
+        'parent'     => $rolex_term->term_id,
+        'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
+    ) );
+    
+    // If we don't have any second-level categories, return empty results
+    if ( empty( $second_level_categories ) ) {
+        return $results;
+    }
+    
+    // If search query is empty or specifically 'collections' or 'rolex', show all third-level categories
+    if ( empty( $search_query ) || strtolower( $search_query ) === 'collections' || strtolower( $search_query ) === 'rolex' ) {
+        // Get all grandchildren (third-level) categories
+        foreach ( $second_level_categories as $child ) {
+            $third_level_cats = get_terms( array(
                 'taxonomy'   => 'product_cat',
                 'hide_empty' => true,
+                'parent'     => $child->term_id,
+                'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
                 'orderby'    => 'name',
                 'order'      => 'ASC',
-                'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
-                'parent'     => $rolex_term->term_id,
             ) );
             
-            // If no children, include the Rolex category itself
-            if ( empty( $categories ) ) {
-                $categories = array( $rolex_term );
+            if ( ! empty( $third_level_cats ) ) {
+                $grandchildren_categories = array_merge( $grandchildren_categories, $third_level_cats );
             }
-        } else {
-            // Fallback to searching for Rolex term
-            $categories = get_terms( array(
-                'taxonomy'   => 'product_cat',
-                'hide_empty' => true,
-                'orderby'    => 'name',
-                'order'      => 'ASC',
-                'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
-                'slug'       => 'rolex',
-            ) );
         }
     } else {
-        // First try to find direct matches in Rolex subcategories
-        $rolex_term = get_term_by( 'slug', 'rolex', 'product_cat' );
-        
-        if ( $rolex_term ) {
-            // Get all potential Rolex subcategories
-            $all_categories = get_terms( array(
+        // For specific search query, filter third-level categories by the search term
+        foreach ( $second_level_categories as $child ) {
+            $third_level_cats = get_terms( array(
                 'taxonomy'   => 'product_cat',
                 'hide_empty' => true,
+                'parent'     => $child->term_id,
+                'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
                 'orderby'    => 'name',
                 'order'      => 'ASC',
-                'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
-                'parent'     => $rolex_term->term_id,
             ) );
             
-            // Filter categories that match the search query
-            $matching_categories = array();
-            foreach ( $all_categories as $category ) {
-                if ( stripos( $category->name, $search_query ) !== false || 
-                     stripos( $category->description, $search_query ) !== false ) {
-                    $matching_categories[] = $category;
+            foreach ( $third_level_cats as $grandchild ) {
+                if ( stripos( $grandchild->name, $search_query ) !== false || 
+                     stripos( $grandchild->description, $search_query ) !== false ) {
+                    $grandchildren_categories[] = $grandchild;
                 }
             }
-            
-            $categories = $matching_categories;
-            
-            // If no matches, include the Rolex category itself if it matches
-            if ( empty( $categories ) && 
-                ( stripos( $rolex_term->name, $search_query ) !== false || 
-                  stripos( $rolex_term->description, $search_query ) !== false ) ) {
-                $categories = array( $rolex_term );
+        }
+        
+        // If no direct third-level matches, try searching in second-level categories
+        // and include all their children
+        if ( empty( $grandchildren_categories ) ) {
+            foreach ( $second_level_categories as $child ) {
+                if ( stripos( $child->name, $search_query ) !== false || 
+                     stripos( $child->description, $search_query ) !== false ) {
+                    $matching_third_level = get_terms( array(
+                        'taxonomy'   => 'product_cat',
+                        'hide_empty' => true,
+                        'parent'     => $child->term_id,
+                        'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
+                    ) );
+                    
+                    if ( ! empty( $matching_third_level ) ) {
+                        $grandchildren_categories = array_merge( $grandchildren_categories, $matching_third_level );
+                    }
+                }
             }
-        } else {
-            // Fallback to regular category search
-            $categories = get_terms( array(
-                'taxonomy'   => 'product_cat',
-                'hide_empty' => true,
-                'search'     => $search_query,
-                'orderby'    => 'name',
-                'order'      => 'ASC',
-                'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
-            ) );
+        }
+        
+        // If still no results, fall back to showing all third-level categories
+        if ( empty( $grandchildren_categories ) ) {
+            foreach ( $second_level_categories as $child ) {
+                $third_level_cats = get_terms( array(
+                    'taxonomy'   => 'product_cat',
+                    'hide_empty' => true,
+                    'parent'     => $child->term_id,
+                    'exclude'    => array( get_option( 'default_product_cat', 0 ) ),
+                    'orderby'    => 'name',
+                    'order'      => 'ASC',
+                ) );
+                
+                if ( ! empty( $third_level_cats ) ) {
+                    $grandchildren_categories = array_merge( $grandchildren_categories, $third_level_cats );
+                }
+            }
         }
     }
     
-    if ( ! empty( $categories ) ) {
+    // Generate the HTML for the results
+    if ( ! empty( $grandchildren_categories ) ) {
         $results['has_results'] = true;
-        $results['html'] = webhero_cs_generate_categories_html( $categories );
+        $results['html'] = webhero_cs_generate_categories_html( $grandchildren_categories );
     }
     
     return $results;

@@ -26,7 +26,6 @@ function webhero_cs_ajax_handler() {
     
     // Get search query and pagination parameters
     $search_query = isset( $_POST['search_query'] ) ? sanitize_text_field( wp_unslash( $_POST['search_query'] ) ) : '';
-    $paged_products = isset( $_POST['paged_products'] ) ? absint( $_POST['paged_products'] ) : 1;
     $paged_posts = isset( $_POST['paged_posts'] ) ? absint( $_POST['paged_posts'] ) : 1;
     
     // Rate limiting
@@ -59,26 +58,14 @@ function webhero_cs_ajax_handler() {
         return;
     }
     
-    // Check if this is a short search term
-    $is_short_term = strlen( $search_query ) <= 4;
-    
-    // Check if this looks like a model number (contains digits)
-    $is_model_number = preg_match( '/\d/', $search_query );
-    
     if ( $debug_mode ) {
         $debug_info['search_query'] = $search_query;
-        $debug_info['is_short_term'] = $is_short_term;
-        $debug_info['is_model_number'] = $is_model_number;
     }
     
     // Special case for 'rolex' keyword
     if ( strtolower( $search_query ) === 'rolex' ) {
         // Get collection results for Rolex
         $collection_results = webhero_cs_get_collection_results( $search_query );
-        
-        // Get product results
-        $product_results = webhero_cs_get_product_results( $search_query, $paged_products, $is_short_term, $is_model_number );
-        $product_pagination = webhero_cs_get_product_pagination( $search_query, $paged_products, $product_results['query'] );
         
         // Custom HTML for Rolex
         ob_start();
@@ -99,8 +86,6 @@ function webhero_cs_ajax_handler() {
             'special_rolex_result' => true,
             'rolex_html' => $rolex_html,
             'collection_content' => $collection_results,
-            'product_content' => $product_results,
-            'product_pagination' => $product_pagination,
             'debug' => $debug_mode ? $debug_info : null,
         ) );
         return;
@@ -111,15 +96,6 @@ function webhero_cs_ajax_handler() {
     
     if ( $debug_mode ) {
         $debug_info['collection_results_found'] = $collection_results['has_results'];
-    }
-    
-    // Get product results
-    $product_results = webhero_cs_get_product_results( $search_query, $paged_products, $is_short_term, $is_model_number );
-    $product_pagination = webhero_cs_get_product_pagination( $search_query, $paged_products, $product_results['query'] );
-    
-    if ( $debug_mode ) {
-        $debug_info['product_results_found'] = $product_results['has_results'];
-        $debug_info['product_count'] = $product_results['found_posts'];
     }
     
     // Get post results
@@ -134,8 +110,6 @@ function webhero_cs_ajax_handler() {
     // Send the response
     wp_send_json_success( array(
         'collection_content' => $collection_results,
-        'product_content' => $product_results,
-        'product_pagination' => $product_pagination,
         'post_content' => $post_results,
         'post_pagination' => $post_pagination,
         'debug' => $debug_mode ? $debug_info : null,

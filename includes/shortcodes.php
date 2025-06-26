@@ -133,9 +133,8 @@ function webhero_cs_results() {
         }
     }
 	
-	$paged_products = isset( $_GET['paged_products'] ) ? absint( $_GET['paged_products'] ) : 1;
-	$paged_posts    = isset( $_GET['paged_posts'] ) ? absint( $_GET['paged_posts'] ) : 1;
-	$current_url    = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+	$paged_posts  = isset( $_GET['paged_posts'] ) ? absint( $_GET['paged_posts'] ) : 1;
+	$current_url  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
 	$is_ms          = false !== strpos( $current_url, 'ms/' );
 	?>
 	<div class="custom-search-results">
@@ -199,46 +198,7 @@ function webhero_cs_results() {
 			</div>
 		<?php endif; ?>
         
-		<?php 
-		// By default, show watches section
-		$hide_watches_section = false;
-		
-		// Only hide watches section when collections are ACTUALLY shown (has results)
-		if ( isset( $collection_results ) && ! empty( $collection_results['has_results'] ) && true === $collection_results['has_results'] ) {
-			$hide_watches_section = true;
-		}
-		
-		$product_results = webhero_cs_get_product_results( $search_query, $paged_products );
-
-		if ( $product_results['has_results'] && ! $hide_watches_section ) : ?>
-			<div class="product-results">
-				<h2 class="section-title">
-					<?php
-					if ( $is_ms ) {
-						esc_html_e( 'Jam Tangan', 'webhero' );
-					} else {
-						esc_html_e( 'Watches', 'webhero' );
-					}
-					?>
-				</h2>
-				<p class="search-description">
-					<?php
-					if ( $is_ms ) {
-						esc_html_e( 'Semak imbas jam tangan Rolex berdasarkan carian anda', 'webhero' );
-					} else {
-						esc_html_e( 'Browse Rolex watches based on your search', 'webhero' );
-					}
-					?>
-				</p>
-				<div class="loading-indicator" style="display: none;"><?php esc_html_e( 'Loading...', 'webhero' ); ?></div>
-				<div class="products-container">
-					<?php echo wp_kses_post( $product_results['html'] ); ?>
-				</div>
-				<div class="product-pagination">
-					<?php echo wp_kses_post( webhero_cs_get_product_pagination( $search_query, $paged_products, $product_results['query'] ) ); ?>
-				</div>
-			</div>
-		<?php endif; ?>
+		<?php // Product section removed as per requirement ?>
 
 		<?php
 		$post_results = webhero_cs_get_post_results( $search_query, $paged_posts );
