@@ -41,6 +41,19 @@
         var searchResults = $('.custom-search-results');
         var postResults = $('.post-results');
         var searchTitle = $('.search-title');
+        
+        // Hide article titles and description on page load for 'rolex' search
+        $(function() {
+            // Extract search query from URL
+            var urlParams = new URLSearchParams(window.location.search);
+            var searchQuery = urlParams.get('q');
+            
+            // If search term is 'rolex', hide article section title and description
+            if (searchQuery && searchQuery.toLowerCase() === 'rolex' && postResults.length > 0) {
+                postResults.find('.section-title').hide();
+                postResults.find('.search-description').hide();
+            }
+        });
 
         // Clear search field functionality
         $('.search-input-wrapper input[type="text"]').on('input', function() {
@@ -306,6 +319,16 @@
                             
                             // Update post contents and show section
                             if (postResults && postResults.length > 0) {
+                                // For 'rolex' search term, hide section-title and search-description
+                                if (query.toLowerCase() === 'rolex') {
+                                    postResults.find('.section-title').hide();
+                                    postResults.find('.search-description').hide();
+                                } else {
+                                    // Make sure they're visible for other search terms
+                                    postResults.find('.section-title').show();
+                                    postResults.find('.search-description').show();
+                                }
+                                
                                 // Clear any existing articles container first
                                 var originalArticlesContainer = postResults.find('.articles-container');
                                 if (originalArticlesContainer.length > 0) {
