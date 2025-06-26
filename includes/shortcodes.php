@@ -226,9 +226,7 @@ function webhero_cs_results() {
 				<div class="articles-container">
 					<?php echo wp_kses_post( $post_results['html'] ); ?>
                 </div>
-                <div class="post-pagination">
-                    <?php echo wp_kses_post( webhero_cs_get_post_pagination( $search_query, $paged_posts ) ); ?>
-                </div>
+                <?php /* Pagination removed as per requirements */ ?>
             </div>
         <?php endif; ?>
 

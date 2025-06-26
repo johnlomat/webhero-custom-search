@@ -150,8 +150,11 @@
                     // Only reset everything for a brand new search, not for pagination
                     if (isNewSearch) {
                         $('.collection-results').hide();
-                        $('.product-results').hide();
-                        postResults.hide();
+                        // Find post results element safely
+                        var $postResults = $('.post-results');
+                        if ($postResults.length > 0) {
+                            $postResults.hide();
+                        }
                     }
                     
                     // Handle special Rolex result
@@ -196,10 +199,6 @@
                         return;
                     }
                     
-                    // Normal search results handling for non-Rolex searches
-                    // Track if we should hide watches section
-                    var hideWatchesSection = false;
-                    
                     // First, handle collection results
                     if (response.data.collection_content) {
                         // Hide collection section if no positive scores were found
@@ -212,41 +211,61 @@
                         } else {
                             var collectionResults = $('.collection-results');
                         
-                        // If collection results section doesn't exist, create it
-                        if (collectionResults.length === 0) {
-                            collectionResults = $('<div class="collection-results"></div>');
-                            
-                            // Insert after search title
-                            var searchTitle = $('.search-title');
-                            if (searchTitle.length > 0) {
-                                searchTitle.after(collectionResults);
-                            } else {
-                                // Fallback if search title not found
-                                searchResults.prepend(collectionResults);
+                            // If collection results section doesn't exist, create it
+                            if (collectionResults.length === 0) {
+                                collectionResults = $('<div class="collection-results"></div>');
+                                
+                                // Insert after search title
+                                var searchTitle = $('.search-title');
+                                if (searchTitle.length > 0) {
+                                    searchTitle.after(collectionResults);
+                                } else {
+                                    // Fallback if search title not found
+                                    searchResults.prepend(collectionResults);
+                                }
+                                
+                                // Add section title
+                                var titleElement = $('<h2 class="section-title"></h2>');
+                                if (currentUrl.includes('ms/')) {
+                                    titleElement.text('Koleksi');
+                                } else {
+                                    titleElement.text('Collections');
+                                }
+                                collectionResults.append(titleElement);
+                                
+                                // Add description
+                                var descElement = $('<p class="search-description"></p>');
+                                if (currentUrl.includes('ms/')) {
+                                    descElement.text('Terokai koleksi kami berdasarkan carian anda');
+                                } else {
+                                    descElement.text('Explore our collections based on your search');
+                                }
+                                collectionResults.append(descElement);
+                                
+                                // Create a container for the collection items
+                                collectionResults.append('<div class="collection-items-container"></div>');
                             }
                             
-                            // Add section title
-                            var titleElement = $('<h2 class="section-title"></h2>');
-                            if (currentUrl.includes('ms/')) {
-                                titleElement.text('Koleksi');
-                            } else {
-                                titleElement.text('Collections');
+                            // Clear any existing collection containers first
+                            var originalCollectionContainer = collectionResults.find('.collection-container');
+                            if (originalCollectionContainer.length > 0) {
+                                // Remove the original collection container (from initial page load)
+                                originalCollectionContainer.remove();
                             }
-                            collectionResults.append(titleElement);
                             
-                            // Add description
-                            var descElement = $('<p class="search-description"></p>');
-                            if (currentUrl.includes('ms/')) {
-                                descElement.text('Terokai koleksi kami berdasarkan carian anda');
+                            // Update collection contents and make visible
+                            var collectionItemsContainer = collectionResults.find('.collection-items-container');
+                            if (collectionItemsContainer.length === 0) {
+                                collectionResults.append('<div class="collection-items-container"></div>');
+                                collectionItemsContainer = collectionResults.find('.collection-items-container');
                             } else {
-                                descElement.text('Explore our collections based on your search');
+                                // Empty the existing collection container before adding new content
+                                collectionItemsContainer.empty();
                             }
-                            collectionResults.append(descElement);
                             
-                            // Add loading indicator
-                            var loadingElement = $('<div class="loading-indicator" style="display: none;">Loading...</div>');
-                            collectionResults.append(loadingElement);
-                        }
+                            // Insert the HTML content from the AJAX response
+                            collectionItemsContainer.html(response.data.collection_content.html);
+                            collectionResults.show();
                         }
                     }
                     
@@ -294,10 +313,20 @@
                             
                             // Update post contents and show section
                             if (postResults && postResults.length > 0) {
+                                // Clear any existing articles container first
+                                var originalArticlesContainer = postResults.find('.articles-container');
+                                if (originalArticlesContainer.length > 0) {
+                                    // Remove the original articles container (from initial page load)
+                                    originalArticlesContainer.remove();
+                                }
+                                
                                 // If container doesn't exist, create it
                                 if (postContainer.length === 0) {
                                     postResults.append('<div id="search-posts-container"></div>');
                                     postContainer = $('#search-posts-container');
+                                } else {
+                                    // Empty the existing container before adding new content
+                                    postContainer.empty();
                                 }
                                 
                                 // Only update if we have a valid container

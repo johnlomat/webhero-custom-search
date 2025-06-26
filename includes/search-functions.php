@@ -619,10 +619,20 @@ function webhero_cs_get_collection_results( $search_query ) {
             return strcasecmp( $a->name, $b->name );
         } );
         
-        $grandchildren_categories = $all_third_level_cats;
+        // For empty queries, we treat each category as having a positive score
+        foreach ( $all_third_level_cats as $cat ) {
+            $scored_categories[] = [
+                'category' => $cat,
+                'score' => 1, // Assign a positive score for initial load
+                'match_reasons' => ['Initial page load']
+            ];
+        }
+        
+        // Set has_results to true for initial page load
+        $results['has_results'] = true;
         
         if ( $is_debug ) {
-            $results['debug_info'][] = 'Showing all third-level categories, sorted alphabetically';
+            $results['debug_info'][] = 'Showing all third-level categories on initial load, sorted alphabetically';
         }
     } else {
         // For specific search query, apply relevance-based scoring
@@ -634,7 +644,9 @@ function webhero_cs_get_collection_results( $search_query ) {
             if ( $is_debug ) {
                 $results['debug_info'][] = 'Search query too short (minimum ' . $min_search_length . ' characters required)';
             }
-            $grandchildren_categories = $all_third_level_cats;
+            // For short search terms, initialize empty array so no categories are shown
+            // This prevents ALL categories from showing up for short search terms
+            $grandchildren_categories = [];
         } else {
             // Scoring weights for different match types
             $exact_name_match_weight = 10;
@@ -645,6 +657,9 @@ function webhero_cs_get_collection_results( $search_query ) {
             // Apply word boundary matching for short terms
             $is_short_term = strlen( $search_query ) <= 4;
             $word_boundary_pattern = '/\b' . preg_quote( $search_query, '/' ) . '\b/i';
+            
+            // Check if we're looking for specific product categories
+            // For exact matching, we'll rely on the existing score-based matching
             
             foreach ( $all_third_level_cats as $category ) {
                 $score = 0;
@@ -722,7 +737,10 @@ function webhero_cs_get_collection_results( $search_query ) {
             // Extract the category objects from the filtered array (only positive scores)
             $grandchildren_categories = [];
             foreach ( $scored_categories_for_display as $scored_item ) {
-                $grandchildren_categories[] = $scored_item['category'];
+                // Only include items with positive scores
+                if ($scored_item['score'] > 0) {
+                    $grandchildren_categories[] = $scored_item['category'];
+                }
             }
             
             // Check if we have any categories with positive scores
@@ -751,10 +769,30 @@ function webhero_cs_get_collection_results( $search_query ) {
         }
     }
     
-    // Generate the HTML for the results
-    if ( ! empty( $grandchildren_categories ) ) {
+    // ONLY use categories with POSITIVE scores for HTML generation
+    $positive_score_categories = [];
+    
+    // Remember we only want to show ALL categories on empty query (initial load)
+    if (empty($search_query)) {
+        foreach ($scored_categories as $scored_item) {
+            $positive_score_categories[] = $scored_item['category'];
+        }
+    } else {
+        // For actual searches, strict filtering - ONLY positive scores
+        foreach ($scored_categories as $scored_item) {
+            if ($scored_item['score'] > 0) {
+                $positive_score_categories[] = $scored_item['category'];
+            }
+        }
+    }
+    
+    // Only proceed if we have categories with positive scores
+    if ( ! empty( $positive_score_categories ) ) {
         $results['has_results'] = true;
-        $results['html'] = webhero_cs_generate_categories_html( $grandchildren_categories );
+        $results['html'] = webhero_cs_generate_categories_html( $positive_score_categories );
+    } else {
+        $results['has_results'] = false;
+        $results['html'] = '';
     }
     
     return $results;
