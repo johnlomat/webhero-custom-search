@@ -26,7 +26,8 @@ function webhero_cs_ajax_handler() {
     
     // Get search query and pagination parameters
     $search_query = isset( $_POST['search_query'] ) ? sanitize_text_field( wp_unslash( $_POST['search_query'] ) ) : '';
-    $paged_posts = isset( $_POST['paged_posts'] ) ? absint( $_POST['paged_posts'] ) : 1;
+    $debug_mode = (isset($_POST['debug']) && $_POST['debug'] === 'true') || (isset($_POST['debug_mode']) && $_POST['debug_mode']);
+    $debug_info = array();
     
     // Rate limiting
     $rate_limit_key = 'webhero_cs_rate_limit_' . webhero_cs_get_client_ip();
@@ -97,12 +98,9 @@ function webhero_cs_ajax_handler() {
         return;
     }
     
-    // Get collection results
+    // Normal search flow
     $collection_results = webhero_cs_get_collection_results( $search_query );
-    $post_results = webhero_cs_get_post_results( $search_query, $paged_posts );
-    
-    // Pagination was removed as part of refactoring
-    $post_pagination = '';
+    $post_results = webhero_cs_get_post_results( $search_query );
     
     // If in debug mode, add debug information
     if ($debug_mode) {
@@ -126,7 +124,6 @@ function webhero_cs_ajax_handler() {
     wp_send_json_success( array(
         'collection_content' => $collection_results,
         'post_content' => $post_results,
-        'post_pagination' => $post_pagination,
         'debug' => $debug_mode ? $debug_info : null,
     ) );
 }

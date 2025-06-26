@@ -133,7 +133,6 @@ function webhero_cs_results() {
         }
     }
 	
-	$paged_posts  = isset( $_GET['paged_posts'] ) ? absint( $_GET['paged_posts'] ) : 1;
 	$current_url  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
 	$is_ms          = false !== strpos( $current_url, 'ms/' );
 	?>
@@ -197,11 +196,9 @@ function webhero_cs_results() {
 				</div>
 			</div>
 		<?php endif; ?>
-        
-		<?php // Product section removed as per requirement ?>
 
 		<?php
-		$post_results = webhero_cs_get_post_results( $search_query, $paged_posts );
+		$post_results = webhero_cs_get_post_results( $search_query );
 		if ( $post_results['has_results'] ) : ?>
 			<div class="post-results">
 				<h2 class="section-title">
@@ -226,7 +223,6 @@ function webhero_cs_results() {
 				<div class="articles-container">
 					<?php echo wp_kses_post( $post_results['html'] ); ?>
                 </div>
-                <?php /* Pagination removed as per requirements */ ?>
             </div>
         <?php endif; ?>
 

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WebHero Custom Search
  * Plugin URI: https://webhero.com
- * Description: Enhanced search functionality with AJAX, pagination, and improved results display
+ * Description: Enhanced search functionality with AJAX and improved relevance-based results display
  * Version: 1.1.0
  * Author: WebHero
  * Author URI: https://webhero.com

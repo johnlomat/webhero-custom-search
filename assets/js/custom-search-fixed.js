@@ -1,15 +1,95 @@
-/**
+﻿/**
  * WebHero Custom Search JavaScript
  * 
- * Handles AJAX search and relevance-based results loading
+ * Handles AJAX search, pagination, and default results loading
  */
 (function($) {
     'use strict';
+
+    // Simple helper to check and remove pagination when not needed
+    function checkAndRemovePagination() {
+        // Count actual articles
+        var articleCount = $('.articles-grid article').length;
+        console.log('Article count:', articleCount, 'Pagination elements:', $('.post-pagination').length);
+        
+        // If 6 or fewer posts, remove pagination
+        if (articleCount <= 6) {
+            console.log('âš ï¸ Removing pagination - only', articleCount, 'posts');
+            $('.post-pagination').remove();
+        }
+    }
 
     // Initialize the search functionality when the document is ready
     $(document).ready(function() {
         'use strict';
         
+        // Log initial page state
+        console.log('-------- PAGE LOAD --------');
+        console.log('Articles on page:', $('.articles-grid article').length);
+        console.log('Pagination elements:', $('.post-pagination').length);
+        
+        // Run initial pagination check on page load
+        setTimeout(function() {
+            console.log('CHECKING PAGINATION - should be hidden if â‰¤ 6 posts');
+            var articleCount = $('.articles-grid article').length;
+            var hasPagination = $('.post-pagination').length > 0;
+            
+            // Simple check - if 6 or fewer posts, hide pagination
+            if (articleCount <= 6 && hasPagination) {
+                console.log('âš ï¸ Found pagination with 6 or fewer posts - removing it');
+                $('.post-pagination').remove();
+            } else if (articleCount > 6 && !hasPagination) {
+                // CRITICAL FIX: If we have more than 6 posts but NO pagination, we need to fetch it
+                console.log('âš ï¸ MISSING PAGINATION: ' + articleCount + ' posts but no pagination!');
+                
+                // Get current search query from URL
+                var searchQuery = new URLSearchParams(window.location.search).get('q') || '';
+                console.log('Current search query:', searchQuery);
+                
+                // Always try to fetch pagination if missing, even for empty search
+                // Make AJAX call to get pagination HTML
+                $.ajax({
+                        url: wh_custom_search.ajax_url,
+                        type: 'POST',
+                        data: {
+                            action: 'webhero_cs_ajax_handler',
+                            search_query: searchQuery,
+                            paged_posts: 1,
+                            get_pagination_only: true,
+                            security: wh_custom_search.nonce
+                        },
+                        success: function(response) {
+                            if (response.success && response.data.post_content && response.data.post_content.pagination) {
+                                console.log('âœ“ Retrieved missing pagination');
+                                // Find the right container to append pagination to
+                                var articlesContainer = $('.articles-container');
+                                if (articlesContainer.length > 0) {
+                                    console.log('Adding pagination after articles-container');
+                                    articlesContainer.after('<div class="post-pagination">' + response.data.post_content.pagination + '</div>');
+                                } else {
+                                    // Alternative: try post-results
+                                    var postResults = $('.post-results');
+                                    if (postResults.length > 0) {
+                                        console.log('Adding pagination to post-results container');
+                                        postResults.append('<div class="post-pagination">' + response.data.post_content.pagination + '</div>');
+                                    } else {
+                                        console.log('Could not find container to add pagination!');
+                                    }
+                                }
+                                
+                                // Extra logging to debug where pagination was added
+                                setTimeout(function() {
+                                    console.log('Pagination elements after adding:', $('.post-pagination').length);
+                                }, 100);
+                            }
+                        }
+                    });
+                }
+            } else {
+                console.log('âœ“ Pagination status correct - ' + articleCount + ' articles, pagination: ' + (hasPagination ? 'YES' : 'NO'));
+            }
+        }, 500);
+
         var menuSearchBar = $('.menu-searchbar');
         var menuSearchIcon = $('.menu-search-icon');
         const currentUrl = window.location.href;
@@ -35,6 +115,17 @@
                 window.location.href='/search/?q=' + encodeURIComponent(searchItem);
             }
         });
+
+        function getPageNumber(link) {
+            var text = link.text().trim();
+            var current = parseInt(link.closest('.pagination').find('.active').text()) || 1;
+            if (text === 'Â«') {
+                return current > 1 ? current - 1 : 1;
+            } else if (text === 'Â»') {
+                return current + 1;
+            }
+            return parseInt(text) || 1;
+        }
         
         var searchForm = $('.custom-search-form');
         var searchButton = searchForm.find('button');
@@ -56,7 +147,7 @@
             $input.val('').trigger('input').focus();
         });
 
-        function performSearch(query, updatePosts, isNewSearch) {
+        function performSearch(query, pagedPosts, updatePosts, isNewSearch) {
             // Initialize debug mode from URL or cookie
             var debug_mode = window.location.search.indexOf('debug=true') !== -1 || window.location.search.indexOf('debug_search=1') !== -1 || document.cookie.indexOf('debug_search=1') !== -1;
             
@@ -77,6 +168,7 @@
                 data: {
                     action: 'webhero_cs_ajax_handler',
                     search_query: query,
+                    paged_posts: pagedPosts,
                     security: webhero_cs_params.nonce,
                     debug: window.location.search.indexOf('debug=true') !== -1 ? 'true' : 'false'
                 },
@@ -92,7 +184,7 @@
                         var debugPanel = $('<div id="webhero-debug-panel" style="position:fixed; right:20px; bottom:20px; width:400px; height:400px; background:#fff; border:1px solid #ddd; padding:10px; overflow:auto; z-index:9999; box-shadow: 0 0 10px rgba(0,0,0,0.1);">' +
                             '<h3>Search Debug Information</h3>' +
                             '<div class="debug-content"></div>' +
-                            '<button class="close-debug" style="position:absolute; top:5px; right:5px;">×</button>' +
+                            '<button class="close-debug" style="position:absolute; top:5px; right:5px;">Ã—</button>' +
                         '</div>');
                         
                         // Add debug panel to the page
@@ -322,7 +414,56 @@
                                 // Only update if we have a valid container
                                 if (postContainer.length > 0) {
                                     postContainer.html(response.data.post_content.html);
-                                } 
+                                }
+                                
+                                console.log('-------- AJAX SEARCH RESULTS --------');
+                                
+                                // Always remove existing pagination first to prevent duplicates
+                                console.log('Removing any existing pagination:', $('.post-pagination').length, 'elements found');
+                                $('.post-pagination').remove();
+                                
+                                // Check post count for pagination decision
+                                var postCount = 0;
+                                if (response.data.post_content && response.data.post_content.post_count) {
+                                    postCount = parseInt(response.data.post_content.post_count);
+                                    console.log('API post_count:', postCount);
+                                } else {
+                                    console.log('WARNING: post_count missing from API response');
+                                    
+                                    // Fallback to counting DOM elements if API doesn't provide count
+                                    var domArticles = $('.articles-grid article').length;
+                                    if (domArticles > 0) {
+                                        console.log('Using DOM article count as fallback:', domArticles);
+                                        postCount = domArticles;
+                                    }
+                                }
+                                
+                                console.log('Has pagination HTML?', response.data.post_content.pagination ? 'YES' : 'NO');
+                                
+                                // Only add pagination if more than 6 posts
+                                if (postCount > 6 && response.data.post_content.pagination) {
+                                    console.log('âœ“ Adding pagination for', postCount, 'posts');
+                                    postResults.append('<div class="post-pagination">' + response.data.post_content.pagination + '</div>');
+                                } else {
+                                    console.log('âš ï¸ NOT adding pagination - post count:', postCount);
+                                }
+                                
+                                // Final check - trust the API post count primarily, but verify DOM count too
+                                var domArticleCount = $('.articles-grid article').length;
+                                console.log('Final DOM article count:', domArticleCount);
+                                
+                                // CRITICAL: We should primarily trust the API post_count from server
+                                // Only remove pagination as a fallback if we have a serious count mismatch
+                                if (postCount > 6 && domArticleCount <= 3) {
+                                    console.log('âš ï¸ WARNING: Significant article count mismatch - API:', postCount, 'vs DOM:', domArticleCount);
+                                }
+                                
+                                // Safety check - if API says 6 or fewer posts, remove pagination
+                                if (postCount <= 6 && $('.post-pagination').length > 0) {
+                                    console.log('âš ï¸ Removing pagination - API post count is', postCount);
+                                    $('.post-pagination').remove();
+                                }
+                                
                                 postResults.show();
                             }
                         } else {
@@ -356,7 +497,7 @@
                     var newUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
                     var params = [];
                     if (query) params.push('q=' + encodeURIComponent(query));
-                    // Pagination parameter removed
+                    if (pagedPosts > 1) params.push('paged_posts=' + pagedPosts);
                     
                     // Preserve debug parameters if present
                     if (window.location.search.indexOf('debug=true') !== -1) {
@@ -387,7 +528,17 @@
             e.preventDefault();
             var query = $(this).find('input[name="q"]').val();
             // This is a new search, so we'll pass true for isNewSearch
-            performSearch(query, true, true);
+            performSearch(query, 1, true, true);
+        });
+
+        $(document).on('click', '.post-pagination a', function(e) {
+            e.preventDefault();
+            var link = $(this);
+            var query = searchForm.find('input[name="q"]').val();
+            var pagedPosts = getPageNumber(link);
+            
+            // This is pagination, not a new search, so pass false for isNewSearch
+            performSearch(query, pagedPosts, true, false);
         });
     });
-})(jQuery);
+})( jQuery );

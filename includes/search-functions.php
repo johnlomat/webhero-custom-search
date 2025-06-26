@@ -52,12 +52,12 @@ function webhero_cs_filter_to_rolex( $args ) {
  *
  * @since 1.0.0
  * @param string $search_query
- * @param int    $paged
+ * @param bool   $calculate_only
  * @return array
  */
-function webhero_cs_get_post_results( $search_query, $paged ) {
-    // Set up pagination
-    $posts_per_page = 6;
+function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
+    // Set posts per page
+    $posts_per_page = 15;
     
     // Check if debug mode is enabled
     $is_debug = isset( $_GET['debug'] ) && 'true' === $_GET['debug'];
@@ -80,13 +80,13 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
     if ( empty( $search_query ) ) {
         // For empty queries, we want to show all posts
         $results['has_results'] = true;
+        $results['debug_info'][] = 'Empty search query detected, showing all posts';
         
         // Get all Rolex posts for empty search query
         $query_args = array(
             'post_type'      => 'post',
             'post_status'    => 'publish',
             'posts_per_page' => $posts_per_page,
-            'paged'          => $paged,
             'tax_query'      => array(
                 array(
                     'taxonomy' => 'category',
@@ -101,6 +101,15 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
         }
         
         $post_query = new WP_Query( $query_args );
+        
+        // For empty queries, consider all posts as having positive score
+        foreach ( $post_query->posts as $post ) {
+            $scored_posts[] = array(
+                'ID'    => $post->ID,
+                'score' => 10, // Give a positive score to all posts for empty query
+                'match_reasons' => array('default_result' => true),
+            );
+        }
     } else {
         // Apply relevance-based search for non-empty queries
         $min_search_length = 3;
@@ -111,7 +120,6 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
                 'post_type'      => 'post',
                 'post_status'    => 'publish',
                 'posts_per_page' => $posts_per_page,
-                'paged'          => $paged,
                 's'              => $search_query,
                 'tax_query'      => array(
                     array(
@@ -302,12 +310,11 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
                     }
                 }
                 
-                // Extract post IDs for pagination
+                // Extract all post IDs (no pagination)
                 $post_ids = array_map( function($item) { return $item['ID']; }, $scored_posts );
                 
-                // Apply pagination
-                $offset = ( $paged - 1 ) * $posts_per_page;
-                $paged_post_ids = array_slice( $post_ids, $offset, $posts_per_page );
+                // Get only the first page worth of results
+                $paged_post_ids = array_slice( $post_ids, 0, $posts_per_page );
                 
                 // If no results, set an empty array
                 if ( empty( $paged_post_ids ) ) {
@@ -324,10 +331,6 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
                 );
                 
                 $post_query = new WP_Query( $query_args );
-                
-                // Set total found posts for pagination
-                $post_query->found_posts = count( $post_ids );
-                $post_query->max_num_pages = ceil( count( $post_ids ) / $posts_per_page );
             }
         }
     }
@@ -336,141 +339,107 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
     $results['query'] = $post_query;
     
     // Generate HTML output
-    // Check if we have any posts with positive scores
-    $has_positive_scores = false;
-    foreach ( $scored_posts as $post_data ) {
-        if ( $post_data['score'] > 0 ) {
-            $has_positive_scores = true;
-            break;
-        }
+    // Filter to only posts with positive scores OR initial page posts and count them
+    // Important: For initial page load with empty search, we count all posts
+    $positive_score_posts = array_filter($scored_posts, function($post_data) use ($search_query) {
+        // Include posts that have a positive score OR are part of initial page load with empty search
+        return $post_data['score'] > 0 || $search_query === '';
+    });
+    
+    // Set has_results and post counts
+    $has_positive_scores = !empty($positive_score_posts);
+    $results['has_results'] = $has_positive_scores || $search_query === '';
+    
+    // Critical fix for initial page load: count all posts that would be displayed
+    $results['post_count'] = count($positive_score_posts);
+    $results['positive_score_posts'] = count($positive_score_posts);
+    $results['actual_article_count'] = isset($post_query) ? $post_query->post_count : 0;
+    $results['raw_found_posts'] = isset($post_query) ? $post_query->found_posts : 0;
+    
+    // Debug output if needed
+    if (isset($_GET['debug']) && $_GET['debug'] == 'true') {
+        $results['debug_info'][] = "Post counts - positive scores: {$results['post_count']}, actual: {$results['actual_article_count']}, raw: {$results['raw_found_posts']}";
     }
     
-    // Set has_results flag based on positive scores or empty query
-    if ( empty( $search_query ) ) {
-        // Always show posts for empty queries (initial page load)
-        $results['has_results'] = true;
-    } else if ( $post_query->found_posts > 0 && $has_positive_scores ) {
-        // Show posts with positive scores for actual searches
-        $results['has_results'] = true;
-    } else {
-        // Hide when no positive scores for actual searches
-        $results['has_results'] = false;
-        
-        if ( $is_debug ) {
-            $results['debug_info'][] = 'No posts found with positive scores - section will be hidden';
-        }
+    // If calculate_only, return now with just the counts
+    if ($calculate_only) {
+        return $results;
     }
-        
-    if ( $results['has_results'] ) {
-        $found_posts = $post_query->found_posts;
-        
+    
+    // Only generate HTML if we have positive-score posts or it's initial page load
+    if ($results['has_results']) {
         ob_start();
         ?>
         <div class="articles-grid">
         <?php
-        while ( $post_query->have_posts() ) {
-            $post_query->the_post();
+        // Make sure post_query exists and has posts
+        if (isset($post_query) && $post_query->have_posts()) :
+            while ($post_query->have_posts()) :
+                $post_query->the_post();
+                $post_id = get_the_ID();
                 
-            $image = wp_get_attachment_image_src( get_post_thumbnail_id(), 'medium' );
-            $image_url = $image ? $image[0] : '';
-            ?>
-            <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
-                <?php if ( $image_url ) : ?>
-                    <div class="post-thumbnail">
-                        <a href="<?php echo esc_url( get_permalink() ); ?>">
-                            <img decoding="async" width="300" height="200" src="<?php echo esc_url( $image_url ); ?>" class="featured-image wp-post-image" alt="<?php echo esc_attr( get_the_title() ); ?>">
+                // Get score for this post
+                $score = 0;
+                foreach ($scored_posts as $scored_post) {
+                    if ($scored_post['ID'] == $post_id) {
+                        $score = $scored_post['score'];
+                        break;
+                    }
+                }
+                
+                // Only show posts with positive scores or for empty search queries
+                if ($score > 0 || $search_query === '') :
+                ?>
+                <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+                    <?php if (has_post_thumbnail()) : ?>
+                        <div class="post-thumbnail">
+                            <a href="<?php the_permalink(); ?>">
+                                <?php the_post_thumbnail('medium'); ?>
+                            </a>
+                        </div>
+                    <?php else : ?>
+                        <div class="post-thumbnail">
+                            <a href="<?php the_permalink(); ?>">
+                                <img src="<?php echo esc_url(WEBHERO_CS_URL . 'assets/images/placeholder.jpg'); ?>" alt="<?php the_title_attribute(); ?>">
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                    <header class="entry-header">
+                        <h2 class="entry-title">
+                            <a href="<?php echo esc_url(get_permalink()); ?>" rel="bookmark"><?php the_title(); ?></a>
+                        </h2>
+                    </header>
+                    <footer class="entry-footer">
+                        <a href="<?php echo esc_url(get_permalink()); ?>" class="read-more">
+                            <?php echo esc_html__('Read More', 'webhero'); ?>
                         </a>
-                    </div>
+                    </footer>
+                </article>
                 <?php endif; ?>
-                <header class="entry-header">
-                    <h2 class="entry-title">
-                        <a href="<?php echo esc_url( get_permalink() ); ?>" rel="bookmark"><?php the_title(); ?></a>
-                    </h2>
-                </header>
-                <footer class="entry-footer">
-                    <a href="<?php echo esc_url( get_permalink() ); ?>" class="read-more">
-                        <?php echo esc_html__( 'Read More', 'webhero' ); ?>
-                    </a>
-                </footer>
-            </article>
-            <?php
-        }
-        ?>
+            <?php endwhile; ?>
+        <?php 
+        else : ?>
+            <div class="no-results"><?php esc_html_e('No articles found for your search.', 'webhero'); ?></div>
+        <?php endif; ?>
         </div>
         <?php
         $results['html'] = ob_get_clean();
+        
+        // Add various post counts for debugging and pagination logic
+        $results['post_count'] = count($positive_score_posts); // Only posts with positive scores
+        $results['positive_score_posts'] = count($positive_score_posts); // Same value, different name for clarity
+        $results['actual_article_count'] = $post_query->post_count; // Actual number of posts shown in UI
+        $results['raw_found_posts'] = $post_query->found_posts; // Raw WP query count
+        
+        // Debug output if needed
+        if (isset($_GET['debug']) && $_GET['debug'] == 'true') {
+            $results['debug_info'][] = "Post counts - positive scores: {$results['post_count']}, actual: {$results['actual_article_count']}, raw: {$results['raw_found_posts']}";
+        }
+        
         wp_reset_postdata();
     }
     
     return $results;
-}
-
-/**
- * Get post pagination.
- *
- * @since 1.0.0
- * @param string $search_query
- * @param int    $paged
- * @return string
- */
-function webhero_cs_get_post_pagination( $search_query, $paged ) {
-    $posts_per_page = 6;
-    
-    $query_args = array(
-        'post_type'      => 'post',
-        'post_status'    => 'publish',
-        'posts_per_page' => $posts_per_page,
-        'paged'          => 1,
-        's'              => $search_query,
-        'tax_query'      => array(
-            array(
-                'taxonomy' => 'category',
-                'field'    => 'slug',
-                'terms'    => 'rolex',
-            ),
-        ),
-    );
-    
-    // Apply search relevance improvements
-    $post_query = new WP_Query( $query_args );
-    
-    $total_pages = $post_query->max_num_pages;
-    
-    if ( $total_pages <= 1 ) {
-        return '';
-    }
-    
-    $pagination = '<ul class="pagination">';
-    
-    // Previous page
-    if ( $paged > 1 ) {
-        $pagination .= '<li class="page-item"><a href="#" aria-label="Previous">&laquo;</a></li>';
-    } else {
-        $pagination .= '<li class="page-item disabled"><span>&laquo;</span></li>';
-    }
-    
-    // Page numbers
-    $start_page = max( 1, $paged - 2 );
-    $end_page = min( $total_pages, $paged + 2 );
-    
-    for ( $i = $start_page; $i <= $end_page; $i++ ) {
-        if ( $i == $paged ) {
-            $pagination .= '<li class="page-item active"><span>' . $i . '</span></li>';
-        } else {
-            $pagination .= '<li class="page-item"><a href="#">' . $i . '</a></li>';
-        }
-    }
-    
-    // Next page
-    if ( $paged < $total_pages ) {
-        $pagination .= '<li class="page-item"><a href="#" aria-label="Next">&raquo;</a></li>';
-    } else {
-        $pagination .= '<li class="page-item disabled"><span>&raquo;</span></li>';
-    }
-    
-    $pagination .= '</ul>';
-    
-    return $pagination;
 }
 
 /**
