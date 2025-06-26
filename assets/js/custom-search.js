@@ -254,9 +254,9 @@
                             }
                         } else {
                             if (currentUrl.includes('ms/')) {
-                                searchTitle.text('Semua Jam Tangan dan Artikel');
+                                searchTitle.text('Semua Koleksi dan Artikel');
                             } else {
-                                searchTitle.text('All Watches and Articles');
+                                searchTitle.text('All Collections and Articles');
                             }
                         }
                     }

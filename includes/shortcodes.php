@@ -160,9 +160,9 @@ function webhero_cs_results() {
 			<h1 class="search-title">
 				<?php 
 				if ( $is_ms ) {
-					esc_html_e( 'Semua Jam Tangan dan Artikel', 'webhero' );
+					esc_html_e( 'Semua Koleksi dan Artikel', 'webhero' );
 				} else {
-					esc_html_e( 'All Watches and Articles', 'webhero' );
+					esc_html_e( 'All Collections and Articles', 'webhero' );
 				}
 				?>
 			</h1>
