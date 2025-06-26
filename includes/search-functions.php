@@ -332,9 +332,28 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
     $results['query'] = $post_query;
     
     // Generate HTML output
-    if ( $post_query && $post_query->have_posts() ) {
+    // Check if we have any posts with positive scores
+    $has_positive_scores = false;
+    foreach ( $scored_posts as $post_data ) {
+        if ( $post_data['score'] > 0 ) {
+            $has_positive_scores = true;
+            break;
+        }
+    }
+    
+    // Set has_results flag based on positive scores, not just post count
+    if ( $post_query->found_posts > 0 && $has_positive_scores ) {
         $results['has_results'] = true;
-        $results['found_posts'] = $post_query->found_posts;
+    } else {
+        $results['has_results'] = false;
+        
+        if ( $is_debug ) {
+            $results['debug_info'][] = 'No posts found with positive scores - section will be hidden';
+        }
+    }
+        
+    if ( $results['has_results'] ) {
+        $found_posts = $post_query->found_posts;
         
         ob_start();
         ?>
@@ -692,12 +711,15 @@ function webhero_cs_get_collection_results( $search_query ) {
                 $grandchildren_categories[] = $scored_item['category'];
             }
             
-            // If no matches, fall back to all third-level categories
+            // If no matches with positive scores, set has_results to false
             if ( empty( $grandchildren_categories ) ) {
-                $grandchildren_categories = $all_third_level_cats;
+                $results['has_results'] = false;
                 
                 if ( $is_debug ) {
-                    $results['debug_info'][] = 'No matches found, showing all categories';
+                    $results['debug_info'][] = 'No matches found with positive scores - section will be hidden';
+                } else {
+                    // Don't return any categories when there are no matches
+                    $grandchildren_categories = [];
                 }
             }
         }

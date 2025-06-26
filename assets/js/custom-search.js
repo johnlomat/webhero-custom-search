@@ -200,9 +200,13 @@
                     // Track if we should hide watches section
                     var hideWatchesSection = false;
                     
-                    // First, handle collection results - only hide watches if collections actually have results
-                    if (response.data.collection_content && response.data.collection_content.has_results === true) {
-                        var collectionResults = $('.collection-results');
+                    // First, handle collection results
+                    if (response.data.collection_content) {
+                        // Hide collection section if no positive scores were found
+                        if (response.data.collection_content.has_results !== true) {
+                            $('.collection-results').hide();
+                        } else {
+                            var collectionResults = $('.collection-results');
                         
                         // If collection results section doesn't exist, create it
                         if (collectionResults.length === 0) {
@@ -238,64 +242,22 @@
                             // Add loading indicator
                             var loadingElement = $('<div class="loading-indicator" style="display: none;">Loading...</div>');
                             collectionResults.append(loadingElement);
-                            
-                            // Add collection container
-                            var collectionContainer = $('<div class="collection-container"></div>');
-                            collectionResults.append(collectionContainer);
                         }
-                        
-                        collectionResults.find('.collection-container').html(response.data.collection_content.html);
-                        collectionResults.show();
-                        
-                        // Collections found and shown
-                        if (response.data.collection_content.html) {
-                            hideWatchesSection = true;
                         }
                     }
                     
-                    if (updatePosts) {
-                        // First, ensure the post results section has the correct structure
-                        if (postResults.find('.articles-container').length === 0) {
-                            // Create a new div for post results section
-                            postResults.empty();
-                            
-                            // Add section title
-                            var titleElement = document.createElement('h2');
-                            titleElement.className = 'section-title';
-                            titleElement.textContent = 'Articles';
-                            postResults.append(titleElement);
-                            
-                            // Add description
-                            var descElement = document.createElement('p');
-                            descElement.className = 'search-description';
-                            descElement.textContent = 'Explore articles related to your search';
-                            postResults.append(descElement);
-                            
-                            // Add loading indicator
-                            var loadingElement = document.createElement('div');
-                            loadingElement.className = 'loading-indicator';
-                            loadingElement.style.display = 'none';
-                            loadingElement.textContent = 'Loading...';
-                            postResults.append(loadingElement);
-                            
-                            // Add articles container
-                            var articlesContainer = document.createElement('div');
-                            articlesContainer.className = 'articles-container';
-                            postResults.append(articlesContainer);
-                            
-                            // Add pagination container
-                            var paginationElement = document.createElement('div');
-                            paginationElement.className = 'post-pagination';
-                            postResults.append(paginationElement);
-                        }
-                        
-                        if (response.data.post_content.has_results) {
-                            postResults.find('.articles-container').html(response.data.post_content.html);
-                            postResults.find('.post-pagination').html(response.data.post_pagination);
-                            postResults.show();
+                    // Handle post results
+                    if (response.data.post_content) {
+                        // Hide post results section if no positive scores were found
+                        if (response.data.post_content.has_results !== true) {
+                            $('.post-results').hide();
+                        } else {
+                            // Make sure post results are shown
+                            $('.post-results').show();
                         }
                     }
-                    // Always refresh the searchTitle reference before using it
+                    
+                    // Get fresh reference to search title
                     var searchTitle = $('.search-title');
                     if (searchTitle.length > 0) {
                         if (query && query.trim() !== '') {
