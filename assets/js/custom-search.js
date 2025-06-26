@@ -248,12 +248,44 @@
                     
                     // Handle post results
                     if (response.data.post_content) {
-                        // Hide post results section if no positive scores were found
-                        if (response.data.post_content.has_results !== true) {
-                            $('.post-results').hide();
+                        var postResults = $('.post-results');
+                        
+                        // Check if there are article results with positive scores
+                        if (response.data.post_content.has_results === true) {
+                            // Make sure post section exists and is visible
+                            if (postResults.length === 0) {
+                                // Create post results section if it doesn't exist
+                                postResults = $('<div class="post-results"></div>');
+                                searchResults.append(postResults);
+                                
+                                // Add title and structure
+                                var postTitle = $('<h2 class="section-title"></h2>');
+                                if (currentUrl.includes('ms/')) {
+                                    postTitle.text('Artikel');
+                                } else {
+                                    postTitle.text('Articles');
+                                }
+                                postResults.append(postTitle);
+                                
+                                // Add description
+                                var postDesc = $('<p class="search-description"></p>');
+                                if (currentUrl.includes('ms/')) {
+                                    postDesc.text('Terokai artikel yang berkaitan dengan carian anda');
+                                } else {
+                                    postDesc.text('Explore articles related to your search');
+                                }
+                                postResults.append(postDesc);
+                                
+                                // Add container for posts
+                                postResults.append('<div id="search-posts-container"></div>');
+                            }
+                            
+                            // Update post contents and show section
+                            $('#search-posts-container').html(response.data.post_content.html);
+                            postResults.show();
                         } else {
-                            // Make sure post results are shown
-                            $('.post-results').show();
+                            // Hide post results if no positive scores
+                            postResults.hide();
                         }
                     }
                     

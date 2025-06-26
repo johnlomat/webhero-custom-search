@@ -711,16 +711,24 @@ function webhero_cs_get_collection_results( $search_query ) {
                 $grandchildren_categories[] = $scored_item['category'];
             }
             
-            // If no matches with positive scores, set has_results to false
-            if ( empty( $grandchildren_categories ) ) {
+            // Check if we have any categories with positive scores
+            $has_positive_scores = false;
+            foreach ( $scored_categories as $cat_data ) {
+                if ( $cat_data['score'] > 0 ) {
+                    $has_positive_scores = true;
+                    break;
+                }
+            }
+            
+            // If no categories with positive scores, set has_results to false
+            if ( !$has_positive_scores ) {
                 $results['has_results'] = false;
                 
                 if ( $is_debug ) {
                     $results['debug_info'][] = 'No matches found with positive scores - section will be hidden';
-                } else {
-                    // Don't return any categories when there are no matches
-                    $grandchildren_categories = [];
                 }
+                // Don't return any categories when there are no matches with positive scores
+                $grandchildren_categories = [];
             }
         }
     }
