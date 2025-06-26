@@ -59,34 +59,280 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
     // Set up pagination
     $posts_per_page = 6;
     
-    // Create the query
-    $query_args = array(
-        'post_type'      => 'post',
-        'post_status'    => 'publish',
-        'posts_per_page' => $posts_per_page,
-        'paged'          => $paged,
-        's'              => $search_query,
-        'tax_query'      => array(
-            array(
-                'taxonomy' => 'category',
-                'field'    => 'slug',
-                'terms'    => 'rolex',
-            ),
-        ),
-    );
-    
-    // Apply search relevance improvements from memory
-    $post_query = new WP_Query( $query_args );
+    // Check if debug mode is enabled
+    $is_debug = isset( $_GET['debug'] ) && 'true' === $_GET['debug'];
     
     // Prepare the results
     $results = array(
         'has_results' => false,
         'html'        => '',
         'found_posts' => 0,
-        'query'       => $post_query,
+        'query'       => null,
+        'debug_info'  => array(),
     );
     
-    if ( $post_query->have_posts() ) {
+    // Trim the search query
+    $search_query = trim( $search_query );
+    $post_query = null;
+    $scored_posts = array();
+    
+    // If search query is empty, get all Rolex posts with standard sorting
+    if ( empty( $search_query ) ) {
+        $query_args = array(
+            'post_type'      => 'post',
+            'post_status'    => 'publish',
+            'posts_per_page' => $posts_per_page,
+            'paged'          => $paged,
+            'tax_query'      => array(
+                array(
+                    'taxonomy' => 'category',
+                    'field'    => 'slug',
+                    'terms'    => 'rolex',
+                ),
+            ),
+        );
+        
+        if ( $is_debug ) {
+            $results['debug_info'][] = 'Empty search query: showing all Rolex posts';
+        }
+        
+        $post_query = new WP_Query( $query_args );
+    } else {
+        // Apply relevance-based search for non-empty queries
+        $min_search_length = 3;
+        
+        // Skip relevance search if search query too short (unless it's a model number/ID)
+        if ( strlen( $search_query ) < $min_search_length && !preg_match('/^[a-z0-9]{2,}$/i', $search_query) ) {
+            $query_args = array(
+                'post_type'      => 'post',
+                'post_status'    => 'publish',
+                'posts_per_page' => $posts_per_page,
+                'paged'          => $paged,
+                's'              => $search_query,
+                'tax_query'      => array(
+                    array(
+                        'taxonomy' => 'category',
+                        'field'    => 'slug',
+                        'terms'    => 'rolex',
+                    ),
+                ),
+            );
+            
+            if ( $is_debug ) {
+                $results['debug_info'][] = 'Search query too short (minimum ' . $min_search_length . ' characters required)';
+            }
+            
+            $post_query = new WP_Query( $query_args );
+        } else {
+            // Get all posts in Rolex category
+            $all_posts_args = array(
+                'post_type'      => 'post',
+                'post_status'    => 'publish',
+                'posts_per_page' => -1, // Get all posts for manual relevance sorting
+                'fields'         => 'ids', // Only get post IDs for efficiency
+                'tax_query'      => array(
+                    array(
+                        'taxonomy' => 'category',
+                        'field'    => 'slug',
+                        'terms'    => 'rolex',
+                    ),
+                ),
+                'no_found_rows'  => true, // Skip pagination count for better performance
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+            );
+            
+            $all_posts = get_posts( $all_posts_args );
+            
+            if ( empty( $all_posts ) ) {
+                $post_query = new WP_Query( array('post__in' => array(0)) ); // Empty result
+                if ( $is_debug ) {
+                    $results['debug_info'][] = 'No posts found in Rolex category';
+                }
+            } else {
+                // Relevance scoring weights
+                $exact_title_match_weight = 10;
+                $title_starts_with_weight = 8;
+                $title_contains_weight = 5;
+                $content_contains_weight = 3;
+                
+                // Lower threshold for debug mode
+                $min_score = $is_debug ? 0 : 1;
+                
+                // Apply word boundary matching for short terms
+                $is_short_term = strlen( $search_query ) <= 4;
+                $word_boundary_pattern = '/\b' . preg_quote( strtolower( $search_query ), '/' ) . '\b/i';
+                $search_query_lower = strtolower( $search_query );
+                
+                foreach ( $all_posts as $post_id ) {
+                    $score = 0;
+                    $match_reasons = array();
+                    
+                    // Get post title and content
+                    $post_title = strtolower( get_the_title( $post_id ) );
+                    $original_content = get_post_field( 'post_content', $post_id );
+
+                    // Extract alt texts for debugging
+                    $alt_texts = array();
+                    $img_tag_content = '';
+                    if ( $is_debug ) {
+                        preg_match_all('/alt=["\']([^"\']*)["\']/', $original_content, $alt_matches);
+                        if (!empty($alt_matches[1])) {
+                            $alt_texts = $alt_matches[1];
+                        }
+                        
+                        // Save full img tag content for later reference
+                        preg_match_all('/<img[^>]+>/i', $original_content, $img_matches);
+                        if (!empty($img_matches[0])) {
+                            $img_tag_content = implode("\n", $img_matches[0]);
+                        }
+                    }
+                    
+                    // Extract ONLY content from allowed tags (p, headings, figcaption)
+                    $visible_content = '';
+                    
+                    // Extract paragraph content
+                    preg_match_all('/<p[^>]*>(.*?)<\/p>/is', $original_content, $p_matches);
+                    if (!empty($p_matches[1])) {
+                        $visible_content .= implode("\n", $p_matches[1]) . "\n";
+                    }
+                    
+                    // Extract heading content (h1-h6)
+                    preg_match_all('/<h[1-6][^>]*>(.*?)<\/h[1-6]>/is', $original_content, $h_matches);
+                    if (!empty($h_matches[1])) {
+                        $visible_content .= implode("\n", $h_matches[1]) . "\n";
+                    }
+                    
+                    // Extract figcaption content
+                    preg_match_all('/<figcaption[^>]*>(.*?)<\/figcaption>/is', $original_content, $figcaption_matches);
+                    if (!empty($figcaption_matches[1])) {
+                        $visible_content .= implode("\n", $figcaption_matches[1]);
+                    }
+                    
+                    // Clean content - strip shortcodes first
+                    $visible_content = strip_shortcodes( $visible_content );
+                    // Remove HTML tags that might be nested
+                    $visible_content = strip_tags( $visible_content );
+                    // Remove HTML comments
+                    $visible_content = preg_replace( '/<!--(.|\s)*?-->/', '', $visible_content );
+                    $post_content = strtolower( $visible_content );
+                    
+                    // Exact title match
+                    if ( $post_title === $search_query_lower ) {
+                        $score += $exact_title_match_weight;
+                        $match_reasons[] = 'Exact title match (+' . $exact_title_match_weight . ')';
+                    }
+                    
+                    // Title starts with search term
+                    if ( strpos( $post_title, $search_query_lower ) === 0 ) {
+                        $score += $title_starts_with_weight;
+                        $match_reasons[] = 'Title starts with term (+' . $title_starts_with_weight . ')';
+                    }
+                    
+                    // Title contains search term (with word boundary check for short terms)
+                    if ( $is_short_term ) {
+                        if ( preg_match( $word_boundary_pattern, $post_title ) ) {
+                            $score += $title_contains_weight;
+                            $match_reasons[] = 'Title contains term (word boundary) (+' . $title_contains_weight . ')';
+                        }
+                    } else if ( strpos( $post_title, $search_query_lower ) !== false ) {
+                        $score += $title_contains_weight;
+                        $match_reasons[] = 'Title contains term (+' . $title_contains_weight . ')';
+                    }
+                    
+                    // Content contains search term
+                    if ( strpos( $post_content, $search_query_lower ) !== false ) {
+                        $score += $content_contains_weight;
+                        $match_reasons[] = 'Content contains term (+' . $content_contains_weight . ')';
+                    }
+
+                    // Check if post has alt text containing the search term but not counted for scoring
+                    if ( $is_debug && !empty($alt_texts) ) {
+                        foreach ( $alt_texts as $alt_text ) {
+                            if ( strpos( strtolower($alt_text), $search_query_lower ) !== false ) {
+                                $match_reasons[] = 'WARNING: Alt text contains search term but NOT counted for scoring';
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If score meets minimum threshold or debug mode, include in results
+                    // If score meets minimum threshold, include in results
+                    if ( $score >= $min_score ) {
+                        $scored_posts[] = array(
+                            'ID' => $post_id,
+                            'score' => $score,
+                            'match_reasons' => $match_reasons,
+                        );
+                    }
+                    // In debug mode, show excluded posts with alt text matches but no content/title matches
+                    else if ( $is_debug && !empty($match_reasons) ) {
+                        $results['debug_info'][] = sprintf(
+                            'EXCLUDED Post ID: %d, Title: %s - %s',
+                            $post_id,
+                            get_the_title( $post_id ),
+                            implode( ', ', $match_reasons )
+                        );
+                    }
+                }
+                
+                // Sort by score (descending)
+                usort( $scored_posts, function( $a, $b ) {
+                    if ( $a['score'] === $b['score'] ) {
+                        // If scores are equal, sort by ID (which often correlates with publish date)
+                        return $b['ID'] - $a['ID']; // Newer posts first
+                    }
+                    return $b['score'] - $a['score'];
+                } );
+                
+                // Add debug info
+                if ( $is_debug ) {
+                    foreach ( $scored_posts as $scored_post ) {
+                        $results['debug_info'][] = sprintf(
+                            'Post ID: %d, Title: %s, Score: %d, Reasons: %s',
+                            $scored_post['ID'],
+                            get_the_title( $scored_post['ID'] ),
+                            $scored_post['score'],
+                            implode( ', ', $scored_post['match_reasons'] )
+                        );
+                    }
+                }
+                
+                // Extract post IDs for pagination
+                $post_ids = array_map( function($item) { return $item['ID']; }, $scored_posts );
+                
+                // Apply pagination
+                $offset = ( $paged - 1 ) * $posts_per_page;
+                $paged_post_ids = array_slice( $post_ids, $offset, $posts_per_page );
+                
+                // If no results, set an empty array
+                if ( empty( $paged_post_ids ) ) {
+                    $paged_post_ids = array( 0 ); // Will return no results
+                }
+                
+                // Create the final query with our manually sorted posts
+                $query_args = array(
+                    'post_type'      => 'post',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => $posts_per_page,
+                    'post__in'       => $paged_post_ids,
+                    'orderby'        => 'post__in', // Preserve our custom sort order
+                );
+                
+                $post_query = new WP_Query( $query_args );
+                
+                // Set total found posts for pagination
+                $post_query->found_posts = count( $post_ids );
+                $post_query->max_num_pages = ceil( count( $post_ids ) / $posts_per_page );
+            }
+        }
+    }
+    
+    // Save query to results
+    $results['query'] = $post_query;
+    
+    // Generate HTML output
+    if ( $post_query && $post_query->have_posts() ) {
         $results['has_results'] = true;
         $results['found_posts'] = $post_query->found_posts;
         
@@ -422,18 +668,15 @@ function webhero_cs_get_collection_results( $search_query ) {
                 return $b['score'] - $a['score'];
             } );
             
-            // Filter out zero scores (unless in debug mode)
-            $min_score = $is_debug ? 0 : 1;
-            $scored_categories = array_filter( $scored_categories, function( $item ) use ( $min_score ) {
-                return $item['score'] >= $min_score;
+            // ALWAYS filter out zero scores for display (regardless of debug mode)
+            // but keep them in debug info
+            $scored_categories_for_display = array_filter( $scored_categories, function( $item ) {
+                return $item['score'] > 0;
             } );
             
-            // Extract the category objects from the scored array
-            foreach ( $scored_categories as $scored_item ) {
-                $grandchildren_categories[] = $scored_item['category'];
-                
-                // Add debug information
-                if ( $is_debug ) {
+            // Add debug information for all items (including zero scores)
+            if ( $is_debug ) {
+                foreach ( $scored_categories as $scored_item ) {
                     $results['debug_info'][] = sprintf(
                         'Category: %s, Score: %d, Reasons: %s',
                         $scored_item['category']->name,
@@ -441,6 +684,12 @@ function webhero_cs_get_collection_results( $search_query ) {
                         implode( ', ', $scored_item['match_reasons'] )
                     );
                 }
+            }
+            
+            // Extract the category objects from the filtered array (only positive scores)
+            $grandchildren_categories = [];
+            foreach ( $scored_categories_for_display as $scored_item ) {
+                $grandchildren_categories[] = $scored_item['category'];
             }
             
             // If no matches, fall back to all third-level categories
