@@ -276,23 +276,26 @@
                                 if (searchResults && searchResults.length > 0) {
                                     searchResults.append(postResults);
                                     
-                                    // Add title and structure
-                                    var postTitle = $('<h2 class="section-title"></h2>');
-                                    if (currentUrl.includes('ms/')) {
-                                        postTitle.text('Artikel');
-                                    } else {
-                                        postTitle.text('Articles');
+                                    // Only show article title and description if search term is NOT 'rolex'
+                                    if (query.toLowerCase() !== 'rolex') {
+                                        // Add title and structure
+                                        var postTitle = $('<h2 class="section-title"></h2>');
+                                        if (currentUrl.includes('ms/')) {
+                                            postTitle.text('Artikel');
+                                        } else {
+                                            postTitle.text('Articles');
+                                        }
+                                        postResults.append(postTitle);
+                                        
+                                        // Add description
+                                        var postDesc = $('<p class="search-description"></p>');
+                                        if (currentUrl.includes('ms/')) {
+                                            postDesc.text('Terokai artikel yang berkaitan dengan carian anda');
+                                        } else {
+                                            postDesc.text('Explore articles related to your search');
+                                        }
+                                        postResults.append(postDesc);
                                     }
-                                    postResults.append(postTitle);
-                                    
-                                    // Add description
-                                    var postDesc = $('<p class="search-description"></p>');
-                                    if (currentUrl.includes('ms/')) {
-                                        postDesc.text('Terokai artikel yang berkaitan dengan carian anda');
-                                    } else {
-                                        postDesc.text('Explore articles related to your search');
-                                    }
-                                    postResults.append(postDesc);
                                     
                                     // Add container for posts
                                     postResults.append('<div id="search-posts-container"></div>');

@@ -71,29 +71,18 @@ function webhero_cs_ajax_handler() {
     
     // Special case for 'rolex' keyword
     if ( strtolower( $search_query ) === 'rolex' ) {
-        // Get collection results for Rolex
-        $collection_results = webhero_cs_get_collection_results( $search_query );
+        // Get post results using the special handling in webhero_cs_get_post_results
+        // This now handles the special 'rolex' page case
+        $post_results = webhero_cs_get_post_results( $search_query );
         
-        // Custom HTML for Rolex
-        ob_start();
-        ?>
-        <div class="rolex-special">
-            <h2>Official Rolex Retailer</h2>
-            <p>We are an Official Rolex Retailer, authorized to sell and maintain Rolex watches.</p>
-            <div class="rolex-image">
-                <img src="<?php echo esc_url( WEBHERO_CS_URL . 'assets/images/rolex-banner.jpg' ); ?>" alt="Rolex Official Retailer">
-            </div>
-            <p>Explore our collection of prestigious, high-precision timepieces designed for an active lifestyle.</p>
-            <a href="/collections/rolex/" class="rolex-button">Discover More</a>
-        </div>
-        <?php
-        $rolex_html = ob_get_clean();
-        
+        // For 'rolex' search we ONLY want to show the page post type, not collections
         wp_send_json_success( array(
-            'special_rolex_result' => true,
-            'rolex_html' => $rolex_html,
-            'collection_content' => $collection_results,
-            'debug' => $debug_mode ? $debug_info : null,
+            'post_content' => array(
+                'html' => $post_results['html'],
+                'has_results' => $post_results['has_results']
+            ),
+            'collection_content' => array('html' => '', 'has_results' => false),
+            'debug' => $debug_mode ? array_merge($debug_info, $post_results['debug_info'] ?? []) : null,
         ) );
         return;
     }

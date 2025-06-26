@@ -76,6 +76,50 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
     $post_query = null;
     $scored_posts = array();
     
+    // Special handling for 'rolex' search
+    if ( strtolower( $search_query ) === 'rolex' ) {
+        // Get the page with 'rolex' slug
+        $rolex_page = get_posts(array(
+            'name' => 'rolex',
+            'post_type' => 'page',
+            'posts_per_page' => 1
+        ));
+        
+        if ( !empty($rolex_page) ) {
+            $rolex_page = $rolex_page[0];
+			$current_url = $_SERVER['REQUEST_URI'];
+			$is_ms = strpos($current_url, 'ms/') !== false;
+            
+            ob_start();
+            ?>
+            <div class="articles-grid">
+                <article id="post-<?php echo $rolex_page->ID; ?>" <?php post_class('', $rolex_page->ID); ?>>
+                    <?php if ( has_post_thumbnail( $rolex_page->ID ) ) : ?>
+                        <div class="post-thumbnail">
+                            <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>">
+                                <?php echo get_the_post_thumbnail( $rolex_page->ID, 'medium', array( 'class' => 'featured-image' ) ); ?>
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                    <footer class="entry-footer">
+                        <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
+                            <?php if ($is_ms) {
+                                echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
+                            } else {
+                                echo esc_html_e( 'Read More', 'webhero' ); 
+                            }
+                            ?>
+                        </a>
+                    </footer>
+                </article>
+            </div>
+            <?php
+            $results['html'] = ob_get_clean();
+            $results['has_results'] = true;
+            return $results;
+        }
+    }
+    
     // Begin processing
     if ( empty( $search_query ) ) {
         // For empty queries, we want to show all posts
