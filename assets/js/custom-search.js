@@ -204,7 +204,11 @@
                     if (response.data.collection_content) {
                         // Hide collection section if no positive scores were found
                         if (response.data.collection_content.has_results !== true) {
-                            $('.collection-results').hide();
+                            // Only try to hide if element exists
+                            var $collectionResults = $('.collection-results');
+                            if ($collectionResults.length > 0) {
+                                $collectionResults.hide();
+                            }
                         } else {
                             var collectionResults = $('.collection-results');
                         
@@ -248,44 +252,65 @@
                     
                     // Handle post results
                     if (response.data.post_content) {
+                        // Get a reference to post results container if it exists
                         var postResults = $('.post-results');
+                        var postContainer = $('#search-posts-container');
                         
                         // Check if there are article results with positive scores
                         if (response.data.post_content.has_results === true) {
-                            // Make sure post section exists and is visible
+                            // If post results section doesn't exist, create it
                             if (postResults.length === 0) {
-                                // Create post results section if it doesn't exist
+                                // Create post results section
                                 postResults = $('<div class="post-results"></div>');
-                                searchResults.append(postResults);
                                 
-                                // Add title and structure
-                                var postTitle = $('<h2 class="section-title"></h2>');
-                                if (currentUrl.includes('ms/')) {
-                                    postTitle.text('Artikel');
-                                } else {
-                                    postTitle.text('Articles');
+                                // Make sure searchResults exists before appending
+                                if (searchResults && searchResults.length > 0) {
+                                    searchResults.append(postResults);
+                                    
+                                    // Add title and structure
+                                    var postTitle = $('<h2 class="section-title"></h2>');
+                                    if (currentUrl.includes('ms/')) {
+                                        postTitle.text('Artikel');
+                                    } else {
+                                        postTitle.text('Articles');
+                                    }
+                                    postResults.append(postTitle);
+                                    
+                                    // Add description
+                                    var postDesc = $('<p class="search-description"></p>');
+                                    if (currentUrl.includes('ms/')) {
+                                        postDesc.text('Terokai artikel yang berkaitan dengan carian anda');
+                                    } else {
+                                        postDesc.text('Explore articles related to your search');
+                                    }
+                                    postResults.append(postDesc);
+                                    
+                                    // Add container for posts
+                                    postResults.append('<div id="search-posts-container"></div>');
+                                    // Update reference to the newly created container
+                                    postContainer = $('#search-posts-container');
                                 }
-                                postResults.append(postTitle);
-                                
-                                // Add description
-                                var postDesc = $('<p class="search-description"></p>');
-                                if (currentUrl.includes('ms/')) {
-                                    postDesc.text('Terokai artikel yang berkaitan dengan carian anda');
-                                } else {
-                                    postDesc.text('Explore articles related to your search');
-                                }
-                                postResults.append(postDesc);
-                                
-                                // Add container for posts
-                                postResults.append('<div id="search-posts-container"></div>');
                             }
                             
                             // Update post contents and show section
-                            $('#search-posts-container').html(response.data.post_content.html);
-                            postResults.show();
+                            if (postResults && postResults.length > 0) {
+                                // If container doesn't exist, create it
+                                if (postContainer.length === 0) {
+                                    postResults.append('<div id="search-posts-container"></div>');
+                                    postContainer = $('#search-posts-container');
+                                }
+                                
+                                // Only update if we have a valid container
+                                if (postContainer.length > 0) {
+                                    postContainer.html(response.data.post_content.html);
+                                }
+                                postResults.show();
+                            }
                         } else {
                             // Hide post results if no positive scores
-                            postResults.hide();
+                            if (postResults && postResults.length > 0) {
+                                postResults.hide();
+                            }
                         }
                     }
                     
