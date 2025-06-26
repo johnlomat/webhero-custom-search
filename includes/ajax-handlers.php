@@ -46,7 +46,13 @@ function webhero_cs_ajax_handler() {
     
     // Initialize debug info if needed
     $debug_info = array();
-    $debug_mode = isset( $_POST['debug_mode'] ) && $_POST['debug_mode'];
+    // Check for debug parameter coming from JavaScript
+    $debug_mode = (isset($_POST['debug']) && $_POST['debug'] === 'true') || (isset($_POST['debug_mode']) && $_POST['debug_mode']);
+    
+    // Set debug flag in URL if debug mode is active
+    if ($debug_mode) {
+        $_GET['debug'] = 'true';
+    }
     
     // Special case for 'collections' keyword
     if ( $search_query === 'collections' ) {
@@ -93,21 +99,30 @@ function webhero_cs_ajax_handler() {
     
     // Get collection results
     $collection_results = webhero_cs_get_collection_results( $search_query );
-    
-    if ( $debug_mode ) {
-        $debug_info['collection_results_found'] = $collection_results['has_results'];
-    }
-    
-    // Get post results
     $post_results = webhero_cs_get_post_results( $search_query, $paged_posts );
-    $post_pagination = webhero_cs_get_post_pagination( $search_query, $paged_posts );
     
-    if ( $debug_mode ) {
-        $debug_info['post_results_found'] = $post_results['has_results'];
-        $debug_info['post_count'] = $post_results['found_posts'];
+    // Pagination was removed as part of refactoring
+    $post_pagination = '';
+    
+    // If in debug mode, add debug information
+    if ($debug_mode) {
+        $debug_info['search_query'] = $search_query;
+        $debug_info['debug_enabled'] = true;
+        
+        // Make sure debug info is passed from functions
+        if (!isset($collection_results['debug_info'])) {
+            $collection_results['debug_info'] = array();
+        }
+        
+        if (!isset($post_results['debug_info'])) {
+            $post_results['debug_info'] = array();
+        }
+        
+        // Add extra info
+        $debug_info['timestamp'] = date('Y-m-d H:i:s');
     }
     
-    // Send the response
+    // Return results
     wp_send_json_success( array(
         'collection_content' => $collection_results,
         'post_content' => $post_results,

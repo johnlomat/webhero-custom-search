@@ -67,7 +67,7 @@
 
         function performSearch(query, pagedPosts, updatePosts, isNewSearch) {
             // Initialize debug mode from URL or cookie
-            var debug_mode = window.location.search.indexOf('debug_search=1') !== -1 || document.cookie.indexOf('debug_search=1') !== -1;
+            var debug_mode = window.location.search.indexOf('debug=true') !== -1 || window.location.search.indexOf('debug_search=1') !== -1 || document.cookie.indexOf('debug_search=1') !== -1;
             
             // Add debug button if not already present
             if (debug_mode && $('.debug-search-status').length === 0) {
@@ -87,10 +87,59 @@
                     action: 'webhero_cs_ajax_handler',
                     search_query: query,
                     paged_posts: pagedPosts,
-                    security: webhero_cs_params.nonce
+                    security: webhero_cs_params.nonce,
+                    debug: window.location.search.indexOf('debug=true') !== -1 ? 'true' : 'false'
                 },
                 success: function(response) {
-					const currentUrl = window.location.href;
+                    const currentUrl = window.location.href;
+                    
+                    // Handle debug mode output
+                    if (window.location.search.indexOf('debug=true') !== -1) {
+                        // Remove any existing debug panel
+                        $('#webhero-debug-panel').remove();
+                        
+                        // Create a debug panel to show information
+                        var debugPanel = $('<div id="webhero-debug-panel" style="position:fixed; right:20px; bottom:20px; width:400px; height:400px; background:#fff; border:1px solid #ddd; padding:10px; overflow:auto; z-index:9999; box-shadow: 0 0 10px rgba(0,0,0,0.1);">' +
+                            '<h3>Search Debug Information</h3>' +
+                            '<div class="debug-content"></div>' +
+                            '<button class="close-debug" style="position:absolute; top:5px; right:5px;">×</button>' +
+                        '</div>');
+                        
+                        // Add debug panel to the page
+                        $('body').append(debugPanel);
+                        
+                        // Add event handler to close button
+                        $('.close-debug').on('click', function() {
+                            $('#webhero-debug-panel').hide();
+                        });
+                        
+                        // Add debug information to the panel
+                        var debugContent = $('#webhero-debug-panel .debug-content');
+                        debugContent.append('<p><strong>Search Query:</strong> ' + query + '</p>');
+                        
+                        // Add collection debug info
+                        if (response.data.collection_content && response.data.collection_content.debug_info) {
+                            debugContent.append('<h4>Collection Results:</h4>');
+                            var collectionInfo = $('<ul></ul>');
+                            $.each(response.data.collection_content.debug_info, function(i, info) {
+                                collectionInfo.append('<li>' + info + '</li>');
+                            });
+                            debugContent.append(collectionInfo);
+                        }
+                        
+                        // Add post debug info
+                        if (response.data.post_content && response.data.post_content.debug_info) {
+                            debugContent.append('<h4>Article Results:</h4>');
+                            var postInfo = $('<ul></ul>');
+                            $.each(response.data.post_content.debug_info, function(i, info) {
+                                postInfo.append('<li>' + info + '</li>');
+                            });
+                            debugContent.append(postInfo);
+                        }
+                        
+                        // Log debug info to console as well
+                        console.log('Search Debug Information:', response.data);
+                    }
                     if (!response.success) {
                         alert(response.data.message);
                         searchResults.removeClass('loading');
@@ -129,7 +178,10 @@
                         var params = [];
                         if (query) params.push('q=' + encodeURIComponent(query));
                         
-                        // Preserve debug parameter if present
+                        // Preserve debug parameters if present
+                        if (window.location.search.indexOf('debug=true') !== -1) {
+                            params.push('debug=true');
+                        }
                         if (window.location.search.indexOf('debug_search=1') !== -1) {
                             params.push('debug_search=1');
                             
@@ -268,7 +320,10 @@
                     if (query) params.push('q=' + encodeURIComponent(query));
                     if (pagedPosts > 1) params.push('paged_posts=' + pagedPosts);
                     
-                    // Preserve debug parameter if present
+                    // Preserve debug parameters if present
+                    if (window.location.search.indexOf('debug=true') !== -1) {
+                        params.push('debug=true');
+                    }
                     if (window.location.search.indexOf('debug_search=1') !== -1) {
                         params.push('debug_search=1');
                         
