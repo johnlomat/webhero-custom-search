@@ -232,7 +232,7 @@ function webhero_cs_results() {
             </div>
         <?php endif; ?>
 
-		<?php if ( ! $collection_results['has_results'] && ! $product_results['has_results'] && ! $post_results['has_results'] && ! empty( $search_query ) ) : ?>
+		<?php if ( ! $collection_results['has_results'] && ! $post_results['has_results'] && ! empty( $search_query ) ) : ?>
 			<div class="no-results-message">
 				<h2><?php esc_html_e( 'Your search did not return any results.', 'webhero' ); ?></h2>
 				<p><?php esc_html_e( 'We invite you to explore these exceptional collections:', 'webhero' ); ?></p>

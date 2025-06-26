@@ -71,13 +71,17 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
         'debug_info'  => array(),
     );
     
-    // Trim the search query
-    $search_query = trim( $search_query );
+    // Trim and convert the search query to lowercase
+    $search_query = strtolower( trim( $search_query ) );
     $post_query = null;
     $scored_posts = array();
     
-    // If search query is empty, get all Rolex posts with standard sorting
+    // Begin processing
     if ( empty( $search_query ) ) {
+        // For empty queries, we want to show all posts
+        $results['has_results'] = true;
+        
+        // Get all Rolex posts for empty search query
         $query_args = array(
             'post_type'      => 'post',
             'post_status'    => 'publish',
@@ -341,10 +345,15 @@ function webhero_cs_get_post_results( $search_query, $paged ) {
         }
     }
     
-    // Set has_results flag based on positive scores, not just post count
-    if ( $post_query->found_posts > 0 && $has_positive_scores ) {
+    // Set has_results flag based on positive scores or empty query
+    if ( empty( $search_query ) ) {
+        // Always show posts for empty queries (initial page load)
+        $results['has_results'] = true;
+    } else if ( $post_query->found_posts > 0 && $has_positive_scores ) {
+        // Show posts with positive scores for actual searches
         $results['has_results'] = true;
     } else {
+        // Hide when no positive scores for actual searches
         $results['has_results'] = false;
         
         if ( $is_debug ) {
@@ -558,6 +567,11 @@ function webhero_cs_get_collection_results( $search_query ) {
         'debug_info'  => array(),
     );
     
+    // Always show collections for empty search query (initial page load)
+    if ( empty( trim( $search_query ) ) ) {
+        $results['has_results'] = true;
+    }
+    
     // Check if debug mode is enabled
     $is_debug = isset( $_GET['debug'] ) && 'true' === $_GET['debug'];
     
@@ -720,8 +734,12 @@ function webhero_cs_get_collection_results( $search_query ) {
                 }
             }
             
-            // If no categories with positive scores, set has_results to false
-            if ( !$has_positive_scores ) {
+            // If it's an empty query, always show all collections
+            if ( empty( $search_query ) ) {
+                $results['has_results'] = true;
+            }
+            // For actual searches, only show if we have positive scores
+            else if ( !$has_positive_scores ) {
                 $results['has_results'] = false;
                 
                 if ( $is_debug ) {
