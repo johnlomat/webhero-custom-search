@@ -12,6 +12,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Filter for product search by title
+ *
+ * @param string $where Where clause
+ * @return string Modified where clause
+ */
+function webhero_cs_filter_products_by_title($where) {
+    global $wpdb;
+    if (isset($GLOBALS['wp_query']->query_vars['_title_query'])) {
+        $where .= ' ' . $GLOBALS['wp_query']->query_vars['_title_query'];
+        // Debug output
+        if (isset($_GET['debug']) && $_GET['debug'] == 'true') {
+            error_log('Modified SQL WHERE clause: ' . $where);
+        }
+    }
+    return $where;
+}
+
+/**
  * Filter search results to only show Rolex products and content
  *
  * @since 1.1.0
@@ -71,10 +89,14 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
         'debug_info'  => array(),
     );
     
+    // Initialize variables to prevent undefined variable errors
+    $scored_posts = array();
+    
     // Trim and convert the search query to lowercase
     $search_query = strtolower( trim( $search_query ) );
     $post_query = null;
     $scored_posts = array();
+    $scored_categories = array(); // Initialize to prevent NULL errors with usort
     
     // Special handling for 'rolex' search
     if ( strtolower( $search_query ) === 'rolex' ) {
@@ -217,8 +239,66 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                 
                 // Apply word boundary matching for short terms
                 $is_short_term = strlen( $search_query ) <= 4;
-                $word_boundary_pattern = '/\b' . preg_quote( strtolower( $search_query ), '/' ) . '\b/i';
-                $search_query_lower = strtolower( $search_query );
+                $word_boundary_pattern = '/\b' . preg_quote( $search_query, '/' ) . '\b/i';
+                
+                // NEW ALGORITHM: Find products matching the search term and show their 3rd level categories
+                $product_categories = array();
+                
+                // Query for products that match the search term in title
+                $args = array(
+                    'post_type'      => 'product',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => 20,
+                    'fields'         => 'ids', // Only get post IDs for efficiency
+                    'meta_query'     => array(
+                        'relation' => 'OR',
+                        array(
+                            'key'     => '_sku',
+                            'value'   => $search_query,
+                            'compare' => 'LIKE'
+                        )
+                    ),
+                );
+                
+                // Add title search
+                global $wpdb;
+                $search_term = $wpdb->esc_like($search_query);
+                $like = '%' . $search_term . '%';
+                
+                // More specific matching for model numbers with flexible spacing
+                if (strlen($search_query) <= 6) { // Increased limit to catch slightly longer model numbers
+                    // Step 1: Add flexible spacing between letters and numbers
+                    $flexible_term = preg_replace('/([a-zA-Z])(\d)/', '$1[ -]*$2', $search_term);
+                    
+                    // Step 2: Add flexible spacing between digits (for multi-digit numbers like m12)
+                    $flexible_term = preg_replace('/(\d)(\d)/', '$1[ -]*$2', $flexible_term);
+                    $post_title_sql = $wpdb->prepare("AND ({$wpdb->posts}.post_title LIKE %s OR {$wpdb->posts}.post_title REGEXP %s)", 
+                                                      $like, $flexible_term);
+                } else {
+                    $post_title_sql = $wpdb->prepare("AND {$wpdb->posts}.post_title LIKE %s", $like);
+                }
+                
+                $args['_title_query'] = $post_title_sql;
+                if (isset($_GET['debug']) && $_GET['debug'] == 'true') {
+                    $results['debug_info'][] = 'Product search SQL clause: ' . $post_title_sql;
+                }
+                
+                add_filter('posts_where', 'webhero_cs_filter_products_by_title');
+                
+                $products_query = new WP_Query($args);
+                remove_filter('posts_where', 'webhero_cs_filter_products_by_title');
+                
+                if ($is_debug) {
+                    $results['debug_info'][] = 'Searching for products with title matching: ' . $search_query;
+                    $results['debug_info'][] = 'Found ' . $products_query->post_count . ' matching products';
+                }
+                
+                // ARTICLE/POST SEARCH: Score each post based on relevance to search term
+                $all_posts = get_posts( $all_posts_args );
+                
+                if ($is_debug) {
+                    $results['debug_info'][] = 'Total Rolex posts: ' . count($all_posts);
+                }
                 
                 foreach ( $all_posts as $post_id ) {
                     $score = 0;
@@ -227,7 +307,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                     // Get post title and content
                     $post_title = strtolower( get_the_title( $post_id ) );
                     $original_content = get_post_field( 'post_content', $post_id );
-
+                    
                     // Extract alt texts for debugging
                     $alt_texts = array();
                     $img_tag_content = '';
@@ -272,6 +352,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                     // Remove HTML comments
                     $visible_content = preg_replace( '/<!--(.|\s)*?-->/', '', $visible_content );
                     $post_content = strtolower( $visible_content );
+                    $search_query_lower = strtolower( $search_query );
                     
                     // Exact title match
                     if ( $post_title === $search_query_lower ) {
@@ -301,7 +382,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                         $score += $content_contains_weight;
                         $match_reasons[] = 'Content contains term (+' . $content_contains_weight . ')';
                     }
-
+                    
                     // Check if post has alt text containing the search term but not counted for scoring
                     if ( $is_debug && !empty($alt_texts) ) {
                         foreach ( $alt_texts as $alt_text ) {
@@ -312,7 +393,6 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                         }
                     }
                     
-                    // If score meets minimum threshold or debug mode, include in results
                     // If score meets minimum threshold, include in results
                     if ( $score >= $min_score ) {
                         $scored_posts[] = array(
@@ -320,98 +400,253 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                             'score' => $score,
                             'match_reasons' => $match_reasons,
                         );
+                        
+                        // Add debug info if enabled
+                        if ( $is_debug ) {
+                            $results['debug_info'][] = sprintf(
+                                'POST: %s, Score: %d, Reasons: %s',
+                                get_the_title( $post_id ),
+                                $score,
+                                implode( ', ', $match_reasons )
+                            );
+                        }
                     }
-                    // In debug mode, show excluded posts with alt text matches but no content/title matches
+                    // In debug mode, show excluded posts too
                     else if ( $is_debug && !empty($match_reasons) ) {
                         $results['debug_info'][] = sprintf(
-                            'EXCLUDED Post ID: %d, Title: %s - %s',
-                            $post_id,
+                            'EXCLUDED POST: %s - %s',
                             get_the_title( $post_id ),
                             implode( ', ', $match_reasons )
                         );
                     }
                 }
                 
-                // Sort by score (descending)
-                usort( $scored_posts, function( $a, $b ) {
-                    if ( $a['score'] === $b['score'] ) {
-                        // If scores are equal, sort by ID (which often correlates with publish date)
-                        return $b['ID'] - $a['ID']; // Newer posts first
-                    }
-                    return $b['score'] - $a['score'];
-                } );
+                // Sort posts by score (descending)
+                if (isset($scored_posts) && is_array($scored_posts) && !empty($scored_posts)) {
+                    usort($scored_posts, function($a, $b) {
+                        if ($a['score'] === $b['score']) {
+                            // If scores are equal, sort by ID (which often correlates with publish date)
+                            return $b['ID'] - $a['ID']; // Newer posts first
+                        }
+                        return $b['score'] - $a['score'];
+                    });
+                } else {
+                    $scored_posts = array();
+                }
                 
-                // Add debug info
+                // Debug output for post counts
                 if ( $is_debug ) {
-                    foreach ( $scored_posts as $scored_post ) {
+                    $results['debug_info'][] = 'Found ' . count($scored_posts) . ' posts with positive scores';
+                    if (!empty($scored_posts)) {
+                        $results['debug_info'][] = 'Top post: ' . get_the_title($scored_posts[0]['ID']) . 
+                        ' with score: ' . $scored_posts[0]['score'];
+                    }
+                }
+                
+                // Prepare post query with the sorted post IDs for HTML generation
+                if (!empty($scored_posts)) {
+                    $post_ids = wp_list_pluck($scored_posts, 'ID');
+                    $post_query = new WP_Query(array(
+                        'post__in' => $post_ids,
+                        'post_type' => 'post',
+                        'posts_per_page' => $posts_per_page,
+                        'orderby' => 'post__in', // Preserve our custom sorted order
+                    ));
+                    $results['has_results'] = true;
+                } else {
+                    $post_query = new WP_Query(array('post__in' => array(0))); // Empty result
+                }
+                
+                // Now also look for categories (product search)
+                if ($products_query->have_posts()) {
+                    $product_match_weight = 7; // Weight for categories found via product title match
+                    
+                    // Track categories we've already processed to avoid duplicates
+                    $processed_category_ids = array();
+                    
+                    foreach ($products_query->posts as $product_id) {
+                        // Get the product title for debugging and checking exact matches
+                        $product_title = strtolower(get_the_title($product_id));
+                        $is_exact_product_match = ($product_title === $search_query);
+                        $exact_product_bonus = $is_exact_product_match ? 3 : 0;
+                        
+                        // Get all categories for this product
+                        $terms = wp_get_post_terms($product_id, 'product_cat', array('fields' => 'all'));
+                        
+                        foreach ($terms as $term) {
+                            // Skip if we've already processed this category
+                            if (isset($processed_category_ids[$term->term_id])) {
+                                continue;
+                            }
+                            
+                            // We need to check if this is a 3rd level category under Rolex
+                            $ancestors = get_ancestors($term->term_id, 'product_cat', 'taxonomy');
+                            
+                            // A 3rd level category will have exactly 2 ancestors (parent and grandparent)
+                            if (count($ancestors) == 2) {
+                                // Make sure the topmost ancestor is the Rolex category
+                                $top_ancestor = end($ancestors);
+                                if ($top_ancestor == $rolex_term->term_id) {
+                                    // Add to processed categories
+                                    $processed_category_ids[$term->term_id] = true;
+                                    
+                                    // Add this category to product match results with appropriate score
+                                    $found_in_third_level = false;
+                                    foreach ($all_third_level_cats as $existing_cat) {
+                                        if ($existing_cat->term_id == $term->term_id) {
+                                            $found_in_third_level = true;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if ($found_in_third_level) {
+                                        $scored_categories[] = array(
+                                            'category' => $term,
+                                            'score' => $product_match_weight + $exact_product_bonus,
+                                            'match_reasons' => array(
+                                                'Product title match' . ($is_exact_product_match ? ' (exact)' : '') . 
+                                                ' (+' . ($product_match_weight + $exact_product_bonus) . '): ' . get_the_title($product_id)
+                                            )
+                                        );
+                                        
+                                        if ($is_debug) {
+                                            $results['debug_info'][] = 'Found category via product: ' . $term->name . 
+                                                ' through product: ' . get_the_title($product_id) . 
+                                                ' with score: ' . ($product_match_weight + $exact_product_bonus);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Process each category using the standard relevance-based scoring
+                foreach ( $all_third_level_cats as $category ) {
+                    $score = 0;
+                    $match_reasons = array();
+                    $category_name = strtolower( $category->name );
+                    $category_desc = strtolower( strip_tags( $category->description ) );
+                    
+                    // Exact name match
+                    if ( $category_name === $search_query ) {
+                        $score += $exact_name_match_weight;
+                        $match_reasons[] = 'Exact name match (+' . $exact_name_match_weight . ')';
+                    }
+                    
+                    // Name starts with search term
+                    if ( strpos( $category_name, $search_query ) === 0 ) {
+                        $score += $name_starts_with_weight;
+                        $match_reasons[] = 'Name starts with term (+' . $name_starts_with_weight . ')';
+                    }
+                    
+                    // Name contains search term (with word boundary check for short terms)
+                    // Name contains search term (with word boundary check for short terms)
+                    if ( $is_short_term ) {
+                        if ( preg_match( $word_boundary_pattern, $category_name ) ) {
+                            $score += $name_contains_weight;
+                            $match_reasons[] = 'Name contains term (word boundary) (+' . $name_contains_weight . ')';
+                        }
+                    } else {
+                        if ( strpos( $category_name, $search_query ) !== false ) {
+                            $score += $name_contains_weight;
+                            $match_reasons[] = 'Name contains term (+' . $name_contains_weight . ')';
+                        }
+                    }
+                    
+                    // Description contains search term
+                    if ( !empty($category_desc) && strpos( $category_desc, $search_query ) !== false ) {
+                        $score += $description_contains_weight;
+                        $match_reasons[] = 'Description contains term (+' . $description_contains_weight . ')';
+                    }
+                    
+                    // If score meets minimum threshold, include in results
+                    if ( $score >= $min_score ) {
+                        $scored_categories[] = array(
+                            'category' => $category,
+                            'score' => $score,
+                            'match_reasons' => $match_reasons,
+                        );
+                    }
+                    // In debug mode, show excluded categories
+                    else if ( $is_debug && !empty($match_reasons) ) {
                         $results['debug_info'][] = sprintf(
-                            'Post ID: %d, Title: %s, Score: %d, Reasons: %s',
-                            $scored_post['ID'],
-                            get_the_title( $scored_post['ID'] ),
-                            $scored_post['score'],
-                            implode( ', ', $scored_post['match_reasons'] )
+                            'EXCLUDED Category: %s - %s',
+                            $category->name,
+                            implode( ', ', $match_reasons )
                         );
                     }
                 }
                 
-                // Extract all post IDs (no pagination)
-                $post_ids = array_map( function($item) { return $item['ID']; }, $scored_posts );
-                
-                // Get only the first page worth of results
-                $paged_post_ids = array_slice( $post_ids, 0, $posts_per_page );
-                
-                // If no results, set an empty array
-                if ( empty( $paged_post_ids ) ) {
-                    $paged_post_ids = array( 0 ); // Will return no results
+                // Sort categories by score (descending)
+                if (isset($scored_categories) && is_array($scored_categories) && !empty($scored_categories)) {
+                    usort($scored_categories, function($a, $b) {
+                        if ($a['score'] === $b['score']) {
+                            // If scores are equal, sort alphabetically by name
+                            return strcasecmp($a['category']->name, $b['category']->name);
+                        }
+                        return $b['score'] - $a['score'];
+                    });
+                } else {
+                    $scored_categories = array(); // Initialize if it doesn't exist
                 }
                 
-                // Create the final query with our manually sorted posts
-                $query_args = array(
-                    'post_type'      => 'post',
-                    'post_status'    => 'publish',
-                    'posts_per_page' => $posts_per_page,
-                    'post__in'       => $paged_post_ids,
-                    'orderby'        => 'post__in', // Preserve our custom sort order
-                );
+                // Add debug info for categories
+                if ( $is_debug && isset($scored_categories) && is_array($scored_categories) ) {
+                    foreach ( $scored_categories as $scored_category ) {
+                        $results['debug_info'][] = sprintf(
+                            'Category: %s, Score: %d, Reasons: %s',
+                            $scored_category['category']->name,
+                            $scored_category['score'],
+                            implode( ', ', $scored_category['match_reasons'] )
+                        );
+                    }
+                }
                 
-                $post_query = new WP_Query( $query_args );
+                // Filter out categories with low scores if scored categories exist
+                $positive_score_categories = array();
+                if (isset($scored_categories) && is_array($scored_categories)) {
+                    $positive_score_categories = array_filter($scored_categories, function($cat_data) use ($search_query) {
+                        // Include categories with positive score OR if it's an initial page load with empty search
+                        return $cat_data['score'] > 0 || $search_query === '';
+                    });
+                }
+                
+                // Limit to a reasonable number of categories
+                $max_categories = 20;
+                $limited_categories = !empty($positive_score_categories) ? array_slice($positive_score_categories, 0, $max_categories) : array();
+                
+                // Extract just the category objects for HTML generation
+                $categories_for_display = !empty($limited_categories) ? array_map(function($item) {
+                    return $item['category'];
+                }, $limited_categories) : array();
+                
+                // Mark whether we found any results
+                $has_positive_scores = isset($positive_score_categories) && !empty($positive_score_categories);
+                $results['has_results'] = $has_positive_scores || empty(trim($search_query));
+                
+                // Add debug info about counts
+                if ($is_debug) {
+                    $results['debug_info'][] = "Found " . count($positive_score_categories) . " categories with positive scores";
+                    if (!empty($positive_score_categories)) {
+                        $results['debug_info'][] = "Top category: " . $positive_score_categories[0]['category']->name . 
+                            " with score: " . $positive_score_categories[0]['score'];
+                    }
+                }
             }
         }
     }
+    // No need to track category counts in the post results function
+    // This was mistakenly added from the collection results function
     
-    // Save query to results
-    $results['query'] = $post_query;
-    
-    // Generate HTML output
-    // Filter to only posts with positive scores OR initial page posts and count them
-    // Important: For initial page load with empty search, we count all posts
-    $positive_score_posts = array_filter($scored_posts, function($post_data) use ($search_query) {
-        // Include posts that have a positive score OR are part of initial page load with empty search
-        return $post_data['score'] > 0 || $search_query === '';
-    });
-    
-    // Set has_results and post counts
-    $has_positive_scores = !empty($positive_score_posts);
-    $results['has_results'] = $has_positive_scores || $search_query === '';
-    
-    // Critical fix for initial page load: count all posts that would be displayed
-    $results['post_count'] = count($positive_score_posts);
-    $results['positive_score_posts'] = count($positive_score_posts);
-    $results['actual_article_count'] = isset($post_query) ? $post_query->post_count : 0;
-    $results['raw_found_posts'] = isset($post_query) ? $post_query->found_posts : 0;
-    
-    // Debug output if needed
-    if (isset($_GET['debug']) && $_GET['debug'] == 'true') {
-        $results['debug_info'][] = "Post counts - positive scores: {$results['post_count']}, actual: {$results['actual_article_count']}, raw: {$results['raw_found_posts']}";
-    }
-    
-    // If calculate_only, return now with just the counts
+    // If calculate_only, return now without generating HTML
     if ($calculate_only) {
         return $results;
     }
     
-    // Only generate HTML if we have positive-score posts or it's initial page load
-    if ($results['has_results']) {
+    // Generate HTML for post results
+    if (!empty($scored_posts)) {
+        $results['has_results'] = true;
         ob_start();
         ?>
         <div class="articles-grid">
@@ -421,7 +656,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
             while ($post_query->have_posts()) :
                 $post_query->the_post();
                 $post_id = get_the_ID();
-                
+
                 // Get score for this post
                 $score = 0;
                 foreach ($scored_posts as $scored_post) {
@@ -430,7 +665,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                         break;
                     }
                 }
-                
+
                 // Only show posts with positive scores or for empty search queries
                 if ($score > 0 || $search_query === '') :
                 ?>
@@ -455,7 +690,15 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                     </header>
                     <footer class="entry-footer">
                         <a href="<?php echo esc_url(get_permalink()); ?>" class="read-more">
-                            <?php echo esc_html__('Read More', 'webhero'); ?>
+                            <?php
+                            $current_url = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+                            $is_ms = strpos($current_url, 'ms/') !== false;
+                            if ($is_ms) {
+                                echo esc_html__('Maklumat lanjut', 'webhero');
+                            } else {
+                                echo esc_html__('Read More', 'webhero');
+                            }
+                            ?>
                         </a>
                     </footer>
                 </article>
@@ -467,21 +710,20 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
         <?php endif; ?>
         </div>
         <?php
-        $results['html'] = ob_get_clean();
-        
-        // Add various post counts for debugging and pagination logic
-        $results['post_count'] = count($positive_score_posts); // Only posts with positive scores
-        $results['positive_score_posts'] = count($positive_score_posts); // Same value, different name for clarity
-        $results['actual_article_count'] = $post_query->post_count; // Actual number of posts shown in UI
-        $results['raw_found_posts'] = $post_query->found_posts; // Raw WP query count
-        
-        // Debug output if needed
-        if (isset($_GET['debug']) && $_GET['debug'] == 'true') {
-            $results['debug_info'][] = "Post counts - positive scores: {$results['post_count']}, actual: {$results['actual_article_count']}, raw: {$results['raw_found_posts']}";
-        }
-        
         wp_reset_postdata();
+        $results['html'] = ob_get_clean();
+    } else {
+        ob_start();
+        ?>
+        <div class="no-article-results">
+            <?php esc_html_e('No articles found matching your search.', 'webhero'); ?>
+        </div>
+        <?php
+        $results['html'] = ob_get_clean();
     }
+    
+    // Just in case any database queries were run
+    wp_reset_postdata();
     
     return $results;
 }
@@ -573,12 +815,17 @@ function webhero_cs_generate_categories_html( $categories ) {
  * @return array
  */
 function webhero_cs_get_collection_results( $search_query ) {
-    // Prepare the results
+    // Prepare results
     $results = array(
         'has_results' => false,
         'html'        => '',
         'debug_info'  => array(),
     );
+    
+    // Initialize variables we'll use later
+    $positive_score_categories = array();
+    $all_third_level_cats = array();
+    $categories_for_display = array();
     
     // Always show collections for empty search query (initial page load)
     if ( empty( trim( $search_query ) ) ) {
@@ -666,14 +913,114 @@ function webhero_cs_get_collection_results( $search_query ) {
             $name_starts_with_weight = 8;
             $name_contains_weight = 5;
             $description_contains_weight = 3;
+            $product_title_match_weight = 7;
             
-            // Apply word boundary matching for short terms
-            $is_short_term = strlen( $search_query ) <= 4;
-            $word_boundary_pattern = '/\b' . preg_quote( $search_query, '/' ) . '\b/i';
+            // Is it a short search term? If so, use word boundary matching
+            $is_short_term = strlen($search_query) <= 3;
+            $word_boundary_pattern = '/\b' . preg_quote($search_query, '/') . '\b/i';
             
-            // Check if we're looking for specific product categories
-            // For exact matching, we'll rely on the existing score-based matching
+            // First, find all products that match the search query in title
+            // This is crucial for model number searches like "m126"
+            $matching_product_ids = array();
+            $matching_product_categories = array();
             
+            // Query for products with titles matching the search query
+            global $wpdb;
+            $search_term = $wpdb->esc_like($search_query);
+            $like = '%' . $search_term . '%';
+            
+            // For short model numbers, use more flexible matching
+            if (strlen($search_query) <= 6) {
+                // Create flexible pattern for model numbers like m126
+                $flexible_term = preg_replace('/([a-zA-Z])(\d)/', '$1[ -]*$2', $search_term);
+                $flexible_term = preg_replace('/(\d)(\d)/', '$1[ -]*$2', $flexible_term);
+                
+                // Get products matching either LIKE or REGEXP pattern
+                $products = $wpdb->get_results(
+                    $wpdb->prepare(
+                        "SELECT ID FROM {$wpdb->posts} 
+                         WHERE post_type = 'product' 
+                         AND post_status = 'publish' 
+                         AND (post_title LIKE %s OR post_title REGEXP %s)",
+                        $like,
+                        $flexible_term
+                    )
+                );
+            } else {
+                // For longer terms, simple LIKE search is sufficient
+                $products = $wpdb->get_results(
+                    $wpdb->prepare(
+                        "SELECT ID FROM {$wpdb->posts} 
+                         WHERE post_type = 'product' 
+                         AND post_status = 'publish' 
+                         AND post_title LIKE %s",
+                        $like
+                    )
+                );
+            }
+            
+            // Get all product IDs that match
+            if (!empty($products)) {
+                foreach ($products as $product) {
+                    $matching_product_ids[] = $product->ID;
+                }
+                
+                if ($is_debug) {
+                    $results['debug_info'][] = 'Found ' . count($matching_product_ids) . ' products with titles matching "' . $search_query . '"';
+                }
+                
+                // Now get the categories these products belong to
+                foreach ($matching_product_ids as $product_id) {
+                    $product_cats = wp_get_post_terms($product_id, 'product_cat', array('fields' => 'all'));
+                    if (!empty($product_cats)) {
+                        foreach ($product_cats as $cat) {
+                            // Get all ancestors to find the 3rd level category
+                            $ancestors = get_ancestors($cat->term_id, 'product_cat', 'taxonomy');
+                            
+                            // If this is already a 3rd level cat under Rolex
+                            if (in_array($cat->term_id, array_map(function($term) { return $term->term_id; }, $all_third_level_cats))) {
+                                if (!isset($matching_product_categories[$cat->term_id])) {
+                                    $matching_product_categories[$cat->term_id] = array(
+                                        'category' => $cat,
+                                        'product_count' => 1,
+                                        'products' => array($product_id)
+                                    );
+                                } else {
+                                    $matching_product_categories[$cat->term_id]['product_count']++;
+                                    $matching_product_categories[$cat->term_id]['products'][] = $product_id;
+                                }
+                            } 
+                            // Check if any ancestor is a 3rd level cat under Rolex
+                            else if (!empty($ancestors)) {
+                                foreach ($all_third_level_cats as $third_level) {
+                                    if (in_array($third_level->term_id, $ancestors)) {
+                                        if (!isset($matching_product_categories[$third_level->term_id])) {
+                                            $matching_product_categories[$third_level->term_id] = array(
+                                                'category' => $third_level,
+                                                'product_count' => 1,
+                                                'products' => array($product_id)
+                                            );
+                                        } else {
+                                            $matching_product_categories[$third_level->term_id]['product_count']++;
+                                            $matching_product_categories[$third_level->term_id]['products'][] = $product_id;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if ($is_debug && !empty($matching_product_categories)) {
+                    $results['debug_info'][] = 'Found products in ' . count($matching_product_categories) . ' different collections';
+                }
+            }
+            
+            // Initialize scored categories array
+            $scored_categories = array();
+            
+            // Score each category based on name and description matches
             foreach ( $all_third_level_cats as $category ) {
                 $score = 0;
                 $match_reasons = array();
@@ -703,28 +1050,55 @@ function webhero_cs_get_collection_results( $search_query ) {
                     $match_reasons[] = 'Name contains term (+' . $name_contains_weight . ')';
                 }
                 
+                // Check if this category has matching products (with search term in product title)
+                if (!empty($matching_product_categories) && isset($matching_product_categories[$category->term_id])) {
+                    $match_data = $matching_product_categories[$category->term_id];
+                    $product_count = $match_data['product_count'];
+                    
+                    // Add points based on how many products match (up to a max)
+                    $products_score = min($product_count * 2, $product_title_match_weight);
+                    $score += $products_score;
+                    
+                    // Add product info to match reasons
+                    $first_product = get_the_title($match_data['products'][0]);
+                    if ($product_count == 1) {
+                        $match_reasons[] = "Product title match: {$first_product} (+{$products_score})";
+                    } else {
+                        $match_reasons[] = "{$product_count} product title matches inc. {$first_product} (+{$products_score})";
+                    }
+                }
+                
                 // Description contains search term
                 if ( strpos( $category_desc, $search_query ) !== false ) {
                     $score += $description_contains_weight;
                     $match_reasons[] = 'Description contains term (+' . $description_contains_weight . ')';
                 }
                 
-                // If there's a score, add to the scored array
+                // If score meets minimum threshold or debug mode is enabled, include in results
                 if ( $score > 0 || $is_debug ) {
-                    // In debug mode, include even zero scores
                     $scored_categories[] = array(
                         'category' => $category,
                         'score' => $score,
                         'match_reasons' => $match_reasons,
                     );
+                    
+                    // Only add debug info for positive scores
+                    if ( $is_debug && $score > 0 ) {
+                        $results['debug_info'][] = sprintf(
+                            'Category: %s, Score: %d, Reasons: %s',
+                            $category->name,
+                            $score,
+                            implode( ', ', $match_reasons )
+                        );
+                    }
                 }
             }
             
             // Sort by score (descending)
             usort( $scored_categories, function( $a, $b ) {
                 if ( $a['score'] === $b['score'] ) {
-                    // If scores are equal, sort alphabetically
-                    return strcasecmp( $a['category']->name, $b['category']->name );
+                    // If scores are equal, sort by ID (which often correlates with publish date)
+                    return $b['category']->term_id - $a['category']->term_id; // Newer posts first
                 }
                 return $b['score'] - $a['score'];
             } );
