@@ -109,8 +109,6 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
         
         if ( !empty($rolex_page) ) {
             $rolex_page = $rolex_page[0];
-			$current_url = $_SERVER['REQUEST_URI'];
-			$is_ms = strpos($current_url, 'ms/') !== false;
             
             ob_start();
             ?>
@@ -125,12 +123,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                     <?php endif; ?>
                     <footer class="entry-footer">
                         <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
-                            <?php if ($is_ms) {
-                                echo esc_html_e( 'Maklumat lanjut', 'webhero' ); 
-                            } else {
-                                echo esc_html_e( 'Read More', 'webhero' ); 
-                            }
-                            ?>
+                            <?php esc_html_e( 'Read More', 'webhero' ); ?>
                         </a>
                     </footer>
                 </article>
@@ -541,7 +534,6 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                     }
                     
                     // Name contains search term (with word boundary check for short terms)
-                    // Name contains search term (with word boundary check for short terms)
                     if ( $is_short_term ) {
                         if ( preg_match( $word_boundary_pattern, $category_name ) ) {
                             $score += $name_contains_weight;
@@ -690,15 +682,7 @@ function webhero_cs_get_post_results( $search_query, $calculate_only = false ) {
                     </header>
                     <footer class="entry-footer">
                         <a href="<?php echo esc_url(get_permalink()); ?>" class="read-more">
-                            <?php
-                            $current_url = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
-                            $is_ms = strpos($current_url, 'ms/') !== false;
-                            if ($is_ms) {
-                                echo esc_html__('Maklumat lanjut', 'webhero');
-                            } else {
-                                echo esc_html__('Read More', 'webhero');
-                            }
-                            ?>
+                            <?php echo esc_html__('Read More', 'webhero'); ?>
                         </a>
                     </footer>
                 </article>
@@ -740,8 +724,7 @@ function webhero_cs_generate_categories_html( $categories ) {
         return '';
     }
     
-    $current_url = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
-    $is_ms = false !== strpos( $current_url, 'ms/' );
+    // Removed hardcoded Malaysian language detection
     
     ob_start();
     ?>
@@ -792,12 +775,7 @@ function webhero_cs_generate_categories_html( $categories ) {
                 
                 <footer class="entry-footer">
                     <a href="<?php echo esc_url($category_link); ?>" class="read-more">
-                        <?php if ($is_ms) {
-                            echo esc_html_e('Ketahui lagi', 'webhero');
-                        } else {
-                            echo esc_html_e('Discover more', 'webhero');
-                        }
-                        ?>
+                        <?php echo esc_html_e('Discover more', 'webhero'); ?>
                     </a>
                 </footer>
             </article>

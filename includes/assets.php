@@ -43,7 +43,6 @@ function webhero_cs_enqueue_scripts() {
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'webhero_cs_nonce' ),
             'home_url' => home_url( '/search/' ),
-            'is_ms'    => strpos( $_SERVER['REQUEST_URI'], 'ms/' ) !== false,
             'i18n'     => array(
                 'no_results'      => __( 'No results found.', 'webhero' ),
                 'loading'         => __( 'Loading...', 'webhero' ),

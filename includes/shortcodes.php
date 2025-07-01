@@ -21,21 +21,19 @@ function webhero_cs_form() {
 	ob_start();
 
 	$search_query = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
-	$current_url  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
-	$is_ms        = false !== strpos( $current_url, 'ms/' );
 	?>
 	<form role="search" method="get" class="custom-search-form" aria-label="<?php esc_attr_e( 'Site Search', 'webhero' ); ?>" action="<?php echo esc_url( home_url( '/search/' ) ); ?>">
 		<div class="search-input-wrapper">
 			<input type="text"
 				name="q"
 				aria-label="<?php esc_attr_e( 'Search input', 'webhero' ); ?>"
-				placeholder="<?php $is_ms ? esc_attr_e( 'Cari...', 'webhero' ) : esc_attr_e( 'Search...', 'webhero' ); ?>"
+				placeholder="<?php esc_attr_e( 'Search...', 'webhero' ); ?>"
 				value="<?php echo esc_attr( $search_query ); ?>">
 			<span class="clear-search" role="button" tabindex="0" aria-label="<?php esc_attr_e( 'Clear search', 'webhero' ); ?>">&times;</span>
 		</div>
 		<button type="submit">
 			<span class="search-text">
-				<?php $is_ms ? esc_html_e( 'Cari', 'webhero' ) : esc_html_e( 'Search', 'webhero' ); ?>
+				<?php esc_html_e( 'Search', 'webhero' ); ?>
 			</span>
 			<span class="spinner"></span>
 		</button>
@@ -82,25 +80,15 @@ function webhero_cs_results() {
         
         if ( ! empty( $rolex_page ) ) {
             $rolex_page  = $rolex_page[0];
-            $current_url = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
-            $is_ms       = false !== strpos( $current_url, 'ms/' );
             ?>
             <div class="custom-search-results">
                 <h1 class="search-title">
                 <?php
-                    if ( $is_ms ) {
-                        printf(
-                            /* translators: %s: search query */
-                            esc_html__( 'Hasil Carian untuk: %s', 'webhero' ),
-                            '<span>' . esc_html( $search_query ) . '</span>'
-                        );
-                    } else {
-                        printf(
-                            /* translators: %s: search query */
-                            esc_html__( 'Search Results for: %s', 'webhero' ),
-                            '<span>' . esc_html( $search_query ) . '</span>'
-                        );
-                    }
+                    printf(
+                        /* translators: %s: search query */
+                        esc_html__( 'Search Results for: %s', 'webhero' ),
+                        '<span>' . esc_html( $search_query ) . '</span>'
+                    );
                 ?>
                 </h1>
                 
@@ -116,12 +104,7 @@ function webhero_cs_results() {
                             <?php endif; ?>
                             <footer class="entry-footer">
                                 <a href="<?php echo esc_url( get_permalink( $rolex_page->ID ) ); ?>" class="read-more">
-                                    <?php if ( $is_ms ) :
-                                        esc_html_e( 'Maklumat lanjut', 'webhero' );
-                                    else :
-                                        esc_html_e( 'Read More', 'webhero' );
-                                    endif;
-                                    ?>
+                                    <?php esc_html_e( 'Read More', 'webhero' ); ?>
                                 </a>
                             </footer>
                         </article>
@@ -132,38 +115,21 @@ function webhero_cs_results() {
             return ob_get_clean();
         }
     }
-	
-	$current_url  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
-	$is_ms          = false !== strpos( $current_url, 'ms/' );
 	?>
 	<div class="custom-search-results">
 		<?php if ( ! empty( $search_query ) ) : ?>
 			<h1 class="search-title">
 				<?php
-				if ( $is_ms ) {
-					printf(
-						/* translators: %s: search query */
-						esc_html__( 'Hasil Carian untuk: %s', 'webhero' ),
-						'<span>' . esc_html( $search_query ) . '</span>'
-					);
-				} else {
-					printf(
-						/* translators: %s: search query */
-						esc_html__( 'Search Results for: %s', 'webhero' ),
-						'<span>' . esc_html( $search_query ) . '</span>'
-					);
-				}
+				printf(
+					/* translators: %s: search query */
+					esc_html__( 'Search Results for: %s', 'webhero' ),
+					'<span>' . esc_html( $search_query ) . '</span>'
+				);
 				?>
 			</h1>
 		<?php else : ?>
 			<h1 class="search-title">
-				<?php 
-				if ( $is_ms ) {
-					esc_html_e( 'Semua Koleksi dan Artikel', 'webhero' );
-				} else {
-					esc_html_e( 'All Collections and Articles', 'webhero' );
-				}
-				?>
+				<?php esc_html_e( 'All Collections and Articles', 'webhero' ); ?>
 			</h1>
 		<?php endif; ?>
 
@@ -173,22 +139,10 @@ function webhero_cs_results() {
 		if ( $collection_results['has_results'] ) : ?>
 			<div class="collection-results">
 				<h2 class="section-title">
-					<?php
-					if ( $is_ms ) {
-						esc_html_e( 'Koleksi', 'webhero' );
-					} else {
-						esc_html_e( 'Collections', 'webhero' );
-					}
-					?>
+					<?php esc_html_e( 'Collections', 'webhero' ); ?>
 				</h2>
 				<p class="search-description">
-					<?php
-					if ( $is_ms ) {
-						esc_html_e( 'Terokai koleksi kami berdasarkan carian anda', 'webhero' );
-					} else {
-						esc_html_e( 'Explore our collections based on your search', 'webhero' );
-					}
-					?>
+					<?php esc_html_e( 'Explore our collections based on your search', 'webhero' ); ?>
 				</p>
 				<div class="loading-indicator" style="display: none;"><?php esc_html_e( 'Loading...', 'webhero' ); ?></div>
 				<div class="collection-container">
@@ -202,22 +156,10 @@ function webhero_cs_results() {
 		if ( $post_results['has_results'] ) : ?>
 			<div class="post-results">
 				<h2 class="section-title">
-					<?php
-					if ( $is_ms ) {
-						esc_html_e( 'Artikel', 'webhero' );
-					} else {
-						esc_html_e( 'Articles', 'webhero' );
-					}
-					?>
+					<?php esc_html_e( 'Articles', 'webhero' ); ?>
 				</h2>
 				<p class="search-description">
-					<?php
-					if ( $is_ms ) {
-						esc_html_e( 'Terokai artikel yang berkaitan dengan carian anda', 'webhero' );
-					} else {
-						esc_html_e( 'Explore articles related to your search', 'webhero' );
-					}
-					?>
+					<?php esc_html_e( 'Explore articles related to your search', 'webhero' ); ?>
 				</p>
 				<div class="loading-indicator" style="display: none;"><?php esc_html_e( 'Loading...', 'webhero' ); ?></div>
 				<div class="articles-container">
@@ -229,14 +171,14 @@ function webhero_cs_results() {
 		<?php if ( ! $collection_results['has_results'] && ! $post_results['has_results'] && ! empty( $search_query ) ) : ?>
 			<div class="no-results-message">
 				<h2><?php esc_html_e( 'Your search did not return any results.', 'webhero' ); ?></h2>
-				<p><?php esc_html_e( 'We invite you to explore these exceptional collections:', 'webhero' ); ?></p>
+				<p><?php esc_html_e( 'We invite you to explore the Rolex collections:', 'webhero' ); ?></p>
 				<ul>
 					<li>
 						<?php
 						/* translators: %s: URL to featured collection */
 						printf(
-							esc_html__( 'Discover our %s, where timeless elegance awaits.', 'webhero' ),
-							'<a href="' . esc_url( 'https://www.sweecheong.com.my/rolex/watches/' ) . '" target="_blank">' . esc_html__( 'Featured Collection', 'webhero' ) . '</a>'
+							esc_html__( 'Discover our Rolex %s, where timeless elegance awaits.', 'webhero' ),
+							'<a href="' . esc_url( 'https://www.sweecheong.com.my/rolex/watches/' ) . '" target="_blank">' . esc_html__( 'Collection', 'webhero' ) . '</a>'
 						);
 						?>
 					</li>
@@ -244,21 +186,21 @@ function webhero_cs_results() {
 						<?php
 						/* translators: %s: URL to new watches */
 						printf(
-							esc_html__( 'Explore the %s to experience the latest innovations from Rolex.', 'webhero' ),
+							esc_html__( 'Explore the Rolex %s', 'webhero' ),
 							'<a href="' . esc_url( 'https://www.sweecheong.com.my/rolex/new-watches/' ) . '" target="_blank">' . esc_html__( 'New Watches', 'webhero' ) . '</a>'
 						);
 						?>
 					</li>
-					<li>
-						<?php
-						/* translators: %s: URL to contact page */
-						printf(
-							esc_html__( 'If you need further assistance, our team is ready to assist you—%s for personalized guidance.', 'webhero' ),
-							'<a href="' . esc_url( 'https://www.sweecheong.com.my/rolex/contact-kota-bharu/' ) . '" target="_blank">' . esc_html__( 'Contact Us', 'webhero' ) . '</a>'
-						);
-						?>
-					</li>
 				</ul>
+				<p>
+					<?php
+					/* translators: %s: URL to contact page */
+					printf(
+						esc_html__( 'If you need further assistance, our team is ready to assist you—%s for personalized guidance.', 'webhero' ),
+						'<a href="' . esc_url( 'https://www.sweecheong.com.my/rolex/contact-kota-bharu/' ) . '" target="_blank">' . esc_html__( 'Contact Us', 'webhero' ) . '</a>'
+					);
+					?>
+				</p>
 			</div>
 		<?php endif; ?>
 	</div>
